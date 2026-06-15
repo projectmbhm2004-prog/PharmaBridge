@@ -1,0 +1,189 @@
+@import "tailwindcss";
+@import "react-day-picker/style.css";
+
+/* ── PharmaBridge Design System (Tailwind v4 @theme) ─────────────────
+   Tokens here are exposed as utilities, e.g.
+   --color-primary        → bg-primary / text-primary / border-primary
+   --color-primary-light  → bg-primary-light ...
+   See PRD §19 for the source palette.                                 */
+@theme {
+  --color-primary: #166534;
+  --color-primary-light: #22c55e;
+  --color-primary-subtle: #f0fdf4;
+
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #64748b;
+
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+  --color-success: #16a34a;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Motion — strong custom easing curves (Emil Kowalski).
+     Exposed as `ease-out-quart`, `ease-out-expo`, `ease-spring` utilities. */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  /* Inter reads tighter and more refined with slight negative tracking
+     and its alternate glyphs enabled. */
+  letter-spacing: -0.011em;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Headings: even line breaks and optical letter-spacing so multi-line
+   titles don't fray. Applies wherever native heading tags are used. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  letter-spacing: -0.02em;
+}
+
+/* Long-form copy: trim orphans without forcing layout. */
+p {
+  text-wrap: pretty;
+}
+
+/* One consistent, accessible keyboard-focus ring in the brand green —
+   only for keyboard users, never on mouse click. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Branded text selection. */
+::selection {
+  background-color: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  color: var(--color-text-primary);
+}
+
+/* Quiet, modern scrollbars that match the slate palette. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #cbd5e1;
+}
+
+/* Respect users who ask for less motion: keep transitions perceptible but
+   instant, and disable looping/scroll animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Date picker (react-day-picker) ──────────────────────────────────
+   Re-skin the default calendar to PharmaBridge tokens: brand green
+   accent, slate text, Inter, and softer geometry. Works in LTR + RTL
+   (react-day-picker mirrors itself via the `dir` attribute).          */
+.rdp-root {
+  --rdp-accent-color: var(--color-primary);
+  --rdp-accent-background-color: var(--color-primary-subtle);
+  --rdp-today-color: var(--color-primary);
+  --rdp-range_start-date-background-color: var(--color-primary);
+  --rdp-range_end-date-background-color: var(--color-primary);
+  --rdp-day-height: 40px;
+  --rdp-day-width: 40px;
+  --rdp-day_button-height: 36px;
+  --rdp-day_button-width: 36px;
+  --rdp-day_button-border-radius: 9999px;
+  --rdp-nav_button-height: 2rem;
+  --rdp-nav_button-width: 2rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+.rdp-month_caption {
+  font-weight: 600;
+}
+.rdp-weekday {
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-transform: none;
+}
+.rdp-day_button:hover:not([disabled]) {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
+}
+.rdp-selected .rdp-day_button {
+  background-color: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  font-weight: 600;
+}
+.rdp-nav button:hover:not([disabled]) {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
+  border-radius: 0.5rem;
+}
+
+/* ── Radix Popover open/close motion (matches framer-motion polish) ── */
+@keyframes pb-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes pb-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+.pb-popover[data-state="open"] {
+  animation: pb-pop-in 0.16s var(--ease-out-quart);
+}
+.pb-popover[data-state="closed"] {
+  animation: pb-pop-out 0.12s var(--ease-out-quart);
+}
