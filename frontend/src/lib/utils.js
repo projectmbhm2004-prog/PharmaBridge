@@ -31,13 +31,13 @@ export function toISODate(date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// money, e.g. "1,234.00 SAR"
+// money, e.g. "₪1,234.00"
 export function formatCurrency(amount) {
   const value = Number(amount) || 0;
-  return `${value.toLocaleString("en-US", {
+  return `₪${value.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} SAR`;
+  })}`;
 }
 
 // date only, e.g. "Jun 5, 2026"
