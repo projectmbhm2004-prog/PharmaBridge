@@ -967,7 +967,7 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
                   >
                     <span
                       className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-colors duration-150 ${
-                        form.has_offer ? "left-[22px]" : "left-0.5"
+                        form.has_offer ? "left-5.5" : "left-0.5"
                       }`}
                     />
                   </button>
