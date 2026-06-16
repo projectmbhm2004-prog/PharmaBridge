@@ -58,11 +58,14 @@ async function getRegistrations(req, res, next) {
     let pharmacies = [];
 
     if (wantCompanies) {
+      // hide never-verified "ghost" sign-ups from the pending approval queue, but always
+      // surface accepted accounts - an accepted company is a real account and must show on
+      // the admin Companies page regardless of the email_verified flag on its user row.
       let sql = `
         SELECT c.*, u.email, u.is_active, u.created_at AS user_created_at, 'company' AS entity_type
           FROM companies c
           JOIN users u ON u.id = c.user_id
-         WHERE u.email_verified = 1`;
+         WHERE (u.email_verified = 1 OR c.registration_status = 'accepted')`;
       const params = [];
       if (status !== 'all') {
         sql += ' AND c.registration_status = ?';
@@ -74,11 +77,13 @@ async function getRegistrations(req, res, next) {
     }
 
     if (wantPharmacies) {
+      // same rule as companies above: keep ghost sign-ups out of the pending queue, but an
+      // accepted pharmacy always shows on the admin Pharmacies page.
       let sql = `
         SELECT p.*, u.email, u.is_active, u.created_at AS user_created_at, 'pharmacy' AS entity_type
           FROM pharmacies p
           JOIN users u ON u.id = p.user_id
-         WHERE u.email_verified = 1`;
+         WHERE (u.email_verified = 1 OR p.registration_status = 'accepted')`;
       const params = [];
       if (status !== 'all') {
         sql += ' AND p.registration_status = ?';
