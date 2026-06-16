@@ -678,43 +678,121 @@ function createPharmacy(req, res, next) {
 // shared handler for editing a company/pharmacy's public profile (description + address).
 // both columns are NOT NULL so we require a non-empty string for each.
 async function updateProfile(req, res, next, table) {
+  let conn;
   try {
     const { id } = req.params;
-    const { description, address } = req.body || {};
+    const body = req.body || {};
+    const isPharmacy = table === 'pharmacies';
 
-    const descriptionTrimmed =
-      typeof description === 'string' ? description.trim() : '';
-    const addressTrimmed = typeof address === 'string' ? address.trim() : '';
-
-    if (!descriptionTrimmed) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Description is required' });
-    }
-    if (!addressTrimmed) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Address is required' });
-    }
-    if (addressTrimmed.length > 255) {
-      return res.status(400).json({
-        success: false,
-        message: 'Address must be 255 characters or fewer',
-      });
-    }
-
-    const [result] = await pool.query(
-      `UPDATE ${table} SET description = ?, address = ? WHERE id = ?`,
-      [descriptionTrimmed, addressTrimmed, id]
+    // grab the record (and its user_id) up front - we need the user_id to update the
+    // password on the users table, and this doubles as the not-found check
+    const [rows] = await pool.query(
+      `SELECT user_id FROM ${table} WHERE id = ? LIMIT 1`,
+      [id]
     );
-    if (result.affectedRows === 0) {
+    if (rows.length === 0) {
       return res
         .status(404)
         .json({ success: false, message: 'Record not found' });
     }
+    const userId = rows[0].user_id;
 
-    return res.json({ success: true, message: 'Profile updated.' });
+    // build the SET clause from whatever was provided - every field is optional, so we
+    // only touch the columns the admin actually filled in. description/address are NOT NULL,
+    // so we skip them when blank rather than wiping them out.
+    const fields = [];
+    const params = [];
+
+    if (typeof body.name === 'string' && body.name.trim()) {
+      fields.push('name = ?');
+      params.push(body.name.trim());
+    }
+    if (isPharmacy && typeof body.owner_name === 'string') {
+      const ownerName = body.owner_name.trim();
+      fields.push('owner_name = ?');
+      params.push(ownerName || null);
+    }
+    if (typeof body.phone === 'string') {
+      const phone = body.phone.trim();
+      fields.push('phone = ?');
+      params.push(phone || null);
+    }
+    if (typeof body.address === 'string' && body.address.trim()) {
+      const address = body.address.trim();
+      if (address.length > 255) {
+        return res.status(400).json({
+          success: false,
+          message: 'Address must be 255 characters or fewer',
+        });
+      }
+      fields.push('address = ?');
+      params.push(address);
+    }
+    if (typeof body.description === 'string' && body.description.trim()) {
+      fields.push('description = ?');
+      params.push(body.description.trim());
+    }
+
+    // password is optional - only hash + update when a non-empty value is sent
+    const passwordProvided =
+      typeof body.password === 'string' && body.password.length > 0;
+    if (passwordProvided) {
+      const pwError = validatePassword(body.password);
+      if (pwError) {
+        return res.status(400).json({ success: false, message: pwError });
+      }
+    }
+
+    if (fields.length === 0 && !passwordProvided) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'No fields to update' });
+    }
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    if (fields.length > 0) {
+      await conn.query(
+        `UPDATE ${table} SET ${fields.join(', ')} WHERE id = ?`,
+        [...params, id]
+      );
+    }
+    if (passwordProvided) {
+      const passwordHash = await bcrypt.hash(body.password, BCRYPT_ROUNDS);
+      await conn.query('UPDATE users SET password_hash = ? WHERE id = ?', [
+        passwordHash,
+        userId,
+      ]);
+    }
+
+    await conn.commit();
+    conn.release();
+    conn = null;
+
+    // return the freshly updated record (joined with its user account fields)
+    const [updated] = await pool.query(
+      `SELECT t.*, u.email, u.is_active
+         FROM ${table} t
+         JOIN users u ON u.id = t.user_id
+        WHERE t.id = ?`,
+      [id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Profile updated.',
+      data: updated[0] || null,
+    });
   } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.error('[admin] rollback failed:', rbErr.message);
+      }
+      conn.release();
+    }
     return next(err);
   }
 }

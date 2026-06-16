@@ -39,8 +39,8 @@ export default function Pharmacies() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
-  // Edit (description + address) state
-  const [editing, setEditing] = useState(null); // { id, name, description, address }
+  // Edit state
+  const [editing, setEditing] = useState(null); // { id, name, owner_name, email, phone, address, description, password }
   const [savingEdit, setSavingEdit] = useState(false);
 
   async function load() {
@@ -118,25 +118,35 @@ export default function Pharmacies() {
   function openEdit(p) {
     setEditing({
       id: p.id,
-      name: p.name,
-      description: p.description === "N/A" ? "" : p.description || "",
+      name: p.name || "",
+      owner_name: p.owner_name === "N/A" ? "" : p.owner_name || "",
+      email: p.email || "",
+      phone: p.phone === "N/A" ? "" : p.phone || "",
       address: p.address === "N/A" ? "" : p.address || "",
+      description: p.description === "N/A" ? "" : p.description || "",
+      password: "",
     });
   }
 
   async function handleEdit(e) {
     e.preventDefault();
     if (!editing) return;
-    if (!editing.description.trim() || !editing.address.trim()) {
-      toast.error("Description and address are required.");
+    if (!editing.name.trim()) {
+      toast.error("Pharmacy name is required.");
       return;
     }
     setSavingEdit(true);
     try {
-      await api.patch(`/admin/pharmacies/${editing.id}`, {
-        description: editing.description.trim(),
+      const payload = {
+        name: editing.name.trim(),
+        owner_name: editing.owner_name.trim(),
+        phone: editing.phone.trim(),
         address: editing.address.trim(),
-      });
+        description: editing.description.trim(),
+      };
+      // only send the password when the admin actually typed one in
+      if (editing.password) payload.password = editing.password;
+      await api.patch(`/admin/pharmacies/${editing.id}`, payload);
       toast.success("Pharmacy updated.");
       setEditing(null);
       load();
@@ -315,7 +325,7 @@ export default function Pharmacies() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => openEdit(p)}
-                        title="Edit description & address"
+                        title="Edit pharmacy details"
                         className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:bg-slate-50 hover:text-text-primary"
                       >
                         <Pencil size={14} /> Edit
@@ -527,21 +537,59 @@ export default function Pharmacies() {
               <div className="grid gap-4 p-6">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-text-primary">
-                    Description <span className="text-red-500">*</span>
+                    Pharmacy Name <span className="text-red-500">*</span>
                   </label>
-                  <textarea
-                    rows={4}
-                    value={editing.description}
+                  <input
+                    type="text"
+                    value={editing.name}
                     onChange={(e) =>
-                      setEditing((s) => ({ ...s, description: e.target.value }))
+                      setEditing((s) => ({ ...s, name: e.target.value }))
                     }
-                    className={`${inputClass} resize-y`}
+                    className={inputClass}
                     required
                   />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-text-primary">
-                    Address <span className="text-red-500">*</span>
+                    Owner Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editing.owner_name}
+                    onChange={(e) =>
+                      setEditing((s) => ({ ...s, owner_name: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editing.email}
+                    readOnly
+                    disabled
+                    className={`${inputClass} cursor-not-allowed bg-slate-50 text-text-secondary`}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                    Phone
+                  </label>
+                  <input
+                    type="text"
+                    value={editing.phone}
+                    onChange={(e) =>
+                      setEditing((s) => ({ ...s, phone: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                    Address
                   </label>
                   <input
                     type="text"
@@ -551,7 +599,33 @@ export default function Pharmacies() {
                       setEditing((s) => ({ ...s, address: e.target.value }))
                     }
                     className={inputClass}
-                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                    Description
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editing.description}
+                    onChange={(e) =>
+                      setEditing((s) => ({ ...s, description: e.target.value }))
+                    }
+                    className={`${inputClass} resize-y`}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-primary">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={editing.password}
+                    onChange={(e) =>
+                      setEditing((s) => ({ ...s, password: e.target.value }))
+                    }
+                    placeholder="Leave blank to keep current password"
+                    className={inputClass}
                   />
                 </div>
               </div>
