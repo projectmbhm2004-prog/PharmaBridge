@@ -356,6 +356,8 @@ function stockBadge(qty) {
 
 function ProductCard({ product, index, onView, onEdit, onDelete }) {
   const images = Array.isArray(product.images) ? product.images : [];
+  // TEMP: confirm what the API hands us for the card image
+  console.log("[ProductCard] images for", product.name, images);
   // always render exactly the first image, ignoring sort_order (some products
   // have multiple images sharing sort_order=0)
   const main = images[0];
@@ -369,7 +371,7 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
       onClick={onView}
       className="flex cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm transition duration-150 hover:-translate-y-0.5 hover:shadow-md"
     >
-      <div className="relative h-40 w-full overflow-hidden bg-slate-100">
+      <div className="relative block h-40 w-full overflow-hidden bg-slate-100">
         {main?.url ? (
           <img
             src={main.url}
@@ -378,7 +380,7 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
             onError={(e) => {
               e.currentTarget.src = PLACEHOLDER;
             }}
-            className="h-full w-full object-cover rounded-t-xl"
+            className="absolute inset-0 block h-full w-full object-cover rounded-t-xl"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-slate-300">
