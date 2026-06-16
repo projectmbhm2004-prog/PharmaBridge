@@ -371,7 +371,7 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
       onClick={onView}
       className="flex cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm transition duration-150 hover:-translate-y-0.5 hover:shadow-md"
     >
-      <div className="relative block h-40 w-full overflow-hidden bg-slate-100">
+      <div className="relative aspect-square overflow-hidden bg-slate-100">
         {main?.url ? (
           <img
             src={main.url}
@@ -380,7 +380,7 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
             onError={(e) => {
               e.currentTarget.src = PLACEHOLDER;
             }}
-            className="absolute inset-0 block h-full w-full object-cover rounded-t-xl"
+            className="h-full w-full object-cover"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-slate-300">
