@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { Popover } from "radix-ui";
 import {
   Building2,
   Hospital,
@@ -10,14 +11,15 @@ import {
   Eye,
   EyeOff,
   Search,
-  X,
   Check,
+  ChevronsUpDown,
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import api from "@/lib/api";
+import { cn } from "@/lib/utils";
 import ErrorMessage from "@/components/shared/ErrorMessage";
 
 const ROLE_OPTIONS = [
@@ -100,11 +102,11 @@ export default function Register() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // driver signup: searching for the company to apply to
+  // driver signup: picking the company to apply to (searchable combobox)
+  const [companies, setCompanies] = useState([]);
   const [companyQuery, setCompanyQuery] = useState("");
-  const [companyResults, setCompanyResults] = useState([]);
+  const [companyOpen, setCompanyOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
-  const searchTimer = useRef(null);
 
   const strength = getStrength(form.password);
 
@@ -113,34 +115,33 @@ export default function Register() {
     setFieldErrors((e) => ({ ...e, [key]: undefined }));
   }
 
-  // debounce the company search so we're not hitting the API on every keystroke
+  // load the full list of accepted companies once on mount; the combobox filters it client-side
   useEffect(() => {
-    if (role !== "driver" || selectedCompany) return;
-    const q = companyQuery.trim();
-    if (!q) {
-      setCompanyResults([]);
-      return;
-    }
-
-    clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(async () => {
+    let active = true;
+    (async () => {
       try {
-        const { data } = await api.get("/market/companies", {
-          params: { search: q },
-        });
+        const { data } = await api.get("/market/companies");
         const list = data?.data ?? data ?? [];
-        setCompanyResults(Array.isArray(list) ? list : []);
+        if (active) setCompanies(Array.isArray(list) ? list : []);
       } catch {
-        setCompanyResults([]);
+        if (active) setCompanies([]);
       }
-    }, 300);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
-    return () => clearTimeout(searchTimer.current);
-  }, [companyQuery, role, selectedCompany]);
+  const companyName = (c) => c?.name ?? c?.company_name ?? "";
+
+  // filter the loaded list by the typed query (case-insensitive). empty query shows everything.
+  const filteredCompanies = companies.filter((c) =>
+    companyName(c).toLowerCase().includes(companyQuery.trim().toLowerCase())
+  );
 
   function selectCompany(company) {
     setSelectedCompany(company);
-    setCompanyResults([]);
+    setCompanyOpen(false);
     setCompanyQuery("");
     setFieldErrors((e) => ({ ...e, company_id: undefined }));
   }
@@ -477,52 +478,93 @@ export default function Register() {
                   </Field>
 
                   <Field label="Company" required error={fieldErrors.company_id}>
-                    {selectedCompany ? (
-                      <div className="flex items-center justify-between rounded-lg border border-primary bg-primary-subtle px-3 py-2.5 ring-1 ring-primary/15">
-                        <span className="text-sm font-medium text-text-primary">
-                          {selectedCompany.name ??
-                            selectedCompany.company_name ??
-                            "Selected company"}
-                        </span>
+                    <Popover.Root
+                      open={companyOpen}
+                      onOpenChange={(open) => {
+                        setCompanyOpen(open);
+                        // reset the filter on close so reopening always shows the full list
+                        if (!open) setCompanyQuery("");
+                      }}
+                    >
+                      <Popover.Trigger asChild>
                         <button
                           type="button"
-                          onClick={() => setSelectedCompany(null)}
-                          aria-label="Clear selected company"
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary transition-colors duration-150 hover:bg-red-50 hover:text-red-600 active:scale-95"
+                          role="combobox"
+                          aria-expanded={companyOpen}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-2 rounded-lg border py-2.5 pl-3 pr-3 text-sm outline-none transition-colors duration-150 focus:ring-2 focus:ring-primary/25",
+                            fieldErrors.company_id
+                              ? "border-red-300 focus:border-red-400 focus:ring-red-500/20"
+                              : "border-border hover:border-slate-300 focus:border-primary"
+                          )}
                         >
-                          <X size={18} />
+                          <span
+                            className={
+                              selectedCompany ? "text-text-primary" : "text-slate-400"
+                            }
+                          >
+                            {selectedCompany
+                              ? companyName(selectedCompany)
+                              : "Select a company…"}
+                          </span>
+                          <ChevronsUpDown
+                            size={16}
+                            className="shrink-0 text-text-secondary"
+                          />
                         </button>
-                      </div>
-                    ) : (
-                      <div className="relative">
-                        <Search
-                          size={18}
-                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
-                        />
-                        <input
-                          type="text"
-                          value={companyQuery}
-                          onChange={(e) => setCompanyQuery(e.target.value)}
-                          placeholder="Search for a company…"
-                          className={`${inputClass("company_id")} pl-10`}
-                        />
-                        {companyResults.length > 0 && (
-                          <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-border bg-white py-1 shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5">
-                            {companyResults.map((c) => (
-                              <li key={c.id}>
-                                <button
-                                  type="button"
-                                  onClick={() => selectCompany(c)}
-                                  className="block w-full px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-primary-subtle hover:text-primary"
-                                >
-                                  {c.name ?? c.company_name}
-                                </button>
+                      </Popover.Trigger>
+
+                      <Popover.Portal>
+                        <Popover.Content
+                          align="start"
+                          sideOffset={6}
+                          className="z-50 w-(--radix-popover-trigger-width) overflow-hidden rounded-lg border border-border bg-white shadow-lg shadow-slate-900/5 ring-1 ring-slate-900/5"
+                        >
+                          <div className="relative border-b border-border">
+                            <Search
+                              size={16}
+                              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+                            />
+                            <input
+                              autoFocus
+                              type="text"
+                              value={companyQuery}
+                              onChange={(e) => setCompanyQuery(e.target.value)}
+                              placeholder="Search companies…"
+                              className="w-full bg-transparent py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-slate-400"
+                            />
+                          </div>
+                          <ul className="max-h-56 overflow-auto py-1">
+                            {filteredCompanies.length === 0 ? (
+                              <li className="px-3 py-6 text-center text-sm text-text-secondary">
+                                No companies found.
                               </li>
-                            ))}
+                            ) : (
+                              filteredCompanies.map((c) => {
+                                const isSelected = selectedCompany?.id === c.id;
+                                return (
+                                  <li key={c.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => selectCompany(c)}
+                                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-primary-subtle hover:text-primary"
+                                    >
+                                      <span>{companyName(c)}</span>
+                                      {isSelected && (
+                                        <Check
+                                          size={16}
+                                          className="shrink-0 text-primary"
+                                        />
+                                      )}
+                                    </button>
+                                  </li>
+                                );
+                              })
+                            )}
                           </ul>
-                        )}
-                      </div>
-                    )}
+                        </Popover.Content>
+                      </Popover.Portal>
+                    </Popover.Root>
                   </Field>
                 </>
               )}
