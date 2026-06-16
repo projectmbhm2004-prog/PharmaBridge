@@ -187,7 +187,7 @@ export default function Market() {
       {/* Search + filters bar (sticky) */}
       <div className="sticky top-16 z-10 -mx-4 mb-6 border-b border-border bg-background/80 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-1 flex-col gap-1 min-w-[200px]">
+          <div className="flex flex-1 flex-col gap-1 min-w-50">
             <label className="text-xs font-medium text-text-secondary">Search</label>
             <div className="relative">
               <Search

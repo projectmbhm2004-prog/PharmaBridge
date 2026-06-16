@@ -112,7 +112,7 @@ export default function Drivers() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-sm">
-        <table className="w-full min-w-[820px] text-left text-sm">
+        <table className="w-full min-w-205 text-left text-sm">
           <thead>
             <tr className="border-b border-border bg-slate-50 text-xs uppercase tracking-wide text-text-secondary">
               <th className="px-4 py-3 font-semibold">Driver Name</th>
@@ -175,7 +175,7 @@ export default function Drivers() {
                   <td className="px-4 py-3 text-text-secondary">{d.vehicle_info || "—"}</td>
                   <td className="px-4 py-3 text-text-secondary">{d.address || "—"}</td>
                   <td className="px-4 py-3 text-text-secondary">
-                    <span className="block max-w-[16rem] truncate" title={d.description || ""}>
+                    <span className="block max-w-64 truncate" title={d.description || ""}>
                       {d.description || "—"}
                     </span>
                   </td>

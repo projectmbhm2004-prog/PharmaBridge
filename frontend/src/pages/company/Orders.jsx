@@ -113,7 +113,7 @@ export default function Orders() {
     <DashboardLayout role="company" title="Incoming Orders">
       {/* Search + date filters */}
       <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="flex flex-1 flex-col gap-1 min-w-[200px]">
+        <div className="flex flex-1 flex-col gap-1 min-w-50">
           <label className="text-xs font-medium text-text-secondary">Search</label>
           <div className="relative">
             <Search

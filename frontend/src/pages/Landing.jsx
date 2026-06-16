@@ -164,7 +164,7 @@ export default function Landing() {
 
       {/* hero */}
       <section
-        className="relative bg-gradient-to-br from-[#166534] to-[#14532d]"
+        className="relative bg-linear-to-br from-primary to-[#14532d]"
         style={{
           backgroundImage:
             'url("https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=1600&q=80")',
@@ -248,7 +248,7 @@ export default function Landing() {
       </section>
 
       {/* how it works */}
-      <section className="bg-[#f0fdf4] py-20">
+      <section className="bg-primary-subtle py-20">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <h2 className="text-center text-3xl font-bold tracking-tight text-text-primary">
             How PharmaBridge works
@@ -302,7 +302,7 @@ export default function Landing() {
       </section>
 
       {/* contact */}
-      <section className="bg-[#166534] py-20">
+      <section className="bg-primary py-20">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
           <h2 className="text-3xl font-bold tracking-tight text-white">
             Get in touch

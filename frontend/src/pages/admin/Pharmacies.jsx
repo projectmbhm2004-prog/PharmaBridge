@@ -242,7 +242,7 @@ export default function Pharmacies() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-sm">
-        <table className="w-full min-w-[980px] text-left text-sm">
+        <table className="w-full min-w-245 text-left text-sm">
           <thead>
             <tr className="border-b border-border bg-slate-50 text-xs uppercase tracking-wide text-text-secondary">
               <th className="px-4 py-3 font-semibold">Pharmacy</th>
@@ -290,7 +290,7 @@ export default function Pharmacies() {
                   <td className="px-4 py-3 text-text-secondary">{p.phone || "—"}</td>
                   <td className="px-4 py-3 text-text-secondary">{p.address || "—"}</td>
                   <td className="px-4 py-3 text-text-secondary">
-                    <span className="block max-w-[16rem] truncate" title={p.description || ""}>
+                    <span className="block max-w-64 truncate" title={p.description || ""}>
                       {p.description || "—"}
                     </span>
                   </td>
