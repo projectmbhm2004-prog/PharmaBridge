@@ -7,14 +7,17 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // fire off an HTML email. resolves with Resend's send response.
 async function sendEmail({ to, subject, html }) {
   try {
-    const result = await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: 'PharmaBridge <onboarding@resend.dev>',
       to: [to],
       subject,
       html,
     });
 
-    return result;
+    console.log('[email] resend response:', JSON.stringify(data));
+    console.log('[email] resend error:', JSON.stringify(error));
+
+    return { data, error };
   } catch (err) {
     // log the real reason, rethrow so the caller decides what to tell the user
     console.error('[email] failed to send:', err.message);
