@@ -13,7 +13,14 @@ const pool = mysql.createPool({
   connectionLimit: 10, // 10 felt like plenty for our load, bump if we start queueing
   queueLimit: 0,
   timezone: '+00:00', // everything in/out is UTC, we format in the frontend
-  charset: 'utf8mb4_unicode_ci',
+  charset: 'utf8mb4', // utf8mb4 so Arabic (and emoji) survive the round-trip
+});
+
+// belt-and-suspenders for the connection charset/collation: Railway's MySQL can
+// default to latin1 at the session level, which mangles Arabic regardless of the
+// pool charset above. force the session to utf8mb4 on every fresh connection.
+pool.on('connection', (conn) => {
+  conn.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
 });
 
 // does this column exist? goes through INFORMATION_SCHEMA so it never throws if it's missing

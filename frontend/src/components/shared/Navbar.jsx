@@ -5,7 +5,7 @@ import useAuth from "@/hooks/useAuth";
 import useCart from "@/hooks/useCart";
 
 // the top bar on dashboard pages
-export default function Navbar({ title }) {
+export default function Navbar({ title, onMenuClick }) {
   const { user, role } = useAuth();
   const { totalItems } = useCart();
   const navigate = useNavigate();
@@ -17,8 +17,9 @@ export default function Navbar({ title }) {
       <div className="flex items-center gap-3">
         <button
           type="button"
+          onClick={onMenuClick}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors duration-150 hover:bg-slate-100 active:scale-95 md:hidden"
-          aria-label="Menu"
+          aria-label="Open menu"
         >
           <Menu size={20} />
         </button>

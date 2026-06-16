@@ -112,7 +112,7 @@ export default function Market() {
   }
 
   const inputClass =
-    "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
 
   return (
     <DashboardLayout role="admin" title="Marketplace (View Only)">
@@ -143,7 +143,7 @@ export default function Market() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Company</label>
           <select
             value={companyId}
@@ -159,7 +159,7 @@ export default function Market() {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Type</label>
           <select
             value={typeId}
@@ -175,7 +175,7 @@ export default function Market() {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Sort</label>
           <select
             value={sort}

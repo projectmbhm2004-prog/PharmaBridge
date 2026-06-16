@@ -13,11 +13,12 @@ import {
   ChartColumn,
   ShoppingCart,
   LogOut,
+  X,
 } from "lucide-react";
 import useAuth from "@/hooks/useAuth";
 import useCart from "@/hooks/useCart";
 
-// nav links keyed by role, shared between the Sidebar and the mobile BottomNav
+// nav links keyed by role, consumed by the Sidebar (docked on desktop, drawer on mobile)
 // eslint-disable-next-line react-refresh/only-export-components
 export const NAV_LINKS = {
   admin: [
@@ -48,77 +49,92 @@ export const NAV_LINKS = {
   ],
 };
 
-// desktop sidebar, hidden on mobile (the BottomNav covers that)
-export default function Sidebar({ role }) {
+// Navigation panel: a fixed sidebar on desktop (md+), and a slide-in drawer on
+// mobile driven by the Navbar hamburger. `open`/`onClose` only matter on mobile;
+// on desktop the panel is always docked (md:translate-x-0).
+export default function Sidebar({ role, open = false, onClose = () => {} }) {
   const { user, logout } = useAuth();
   const { totalItems } = useCart();
   const links = NAV_LINKS[role] ?? [];
   const email = user?.email ?? "";
 
+  // shared link styling, used for the role links and the pharmacy cart link
+  const linkClass = ({ isActive }) =>
+    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-150 ${
+      isActive
+        ? "bg-white/15 font-semibold text-white shadow-sm"
+        : "font-medium text-white/80 hover:bg-white/10 hover:text-white"
+    }`;
+
   return (
-    <aside className="fixed left-0 top-0 hidden h-screen w-60 flex-col bg-primary text-white md:flex">
-      {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-5">
-        <img src="/icon.png" alt="PharmaBridge" className="w-8 h-8 object-contain" />
-        <span className="text-lg font-bold tracking-tight text-white">PharmaBridge</span>
-      </div>
+    <>
+      {/* Mobile backdrop — tap to dismiss. Hidden on desktop. */}
+      <div
+        onClick={onClose}
+        aria-hidden="true"
+        className={`fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
 
-      {/* Nav */}
-      <nav className="flex-1 space-y-1 px-3 py-2">
-        {links.map(({ icon: Icon, label, to }) => (
-          <Fragment key={to}>
-            <NavLink
-              to={to}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-150 ${
-                  isActive
-                    ? "bg-white/15 font-semibold text-white shadow-sm"
-                    : "font-medium text-white/80 hover:bg-white/10 hover:text-white"
-                }`
-              }
-            >
-              <Icon size={20} className="shrink-0" />
-              <span>{label}</span>
-            </NavLink>
+      <aside
+        className={`fixed left-0 top-0 z-50 flex h-screen w-60 flex-col bg-primary text-white transition-transform duration-300 ease-spring md:z-30 md:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {/* Logo + mobile close button */}
+        <div className="flex items-center gap-2 px-5 py-5">
+          <img src="/icon.png" alt="PharmaBridge" className="w-8 h-8 object-contain" />
+          <span className="text-lg font-bold tracking-tight text-white">PharmaBridge</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-white/80 transition-colors duration-150 hover:bg-white/10 hover:text-white active:scale-95 md:hidden"
+          >
+            <X size={20} />
+          </button>
+        </div>
 
-            {role === "pharmacy" && to === "/pharmacy/market" && (
-              <NavLink
-                to="/pharmacy/cart"
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-150 ${
-                    isActive
-                      ? "bg-white/15 font-semibold text-white shadow-sm"
-                      : "font-medium text-white/80 hover:bg-white/10 hover:text-white"
-                  }`
-                }
-              >
-                <ShoppingCart size={20} className="shrink-0" />
-                <span>My Cart</span>
-                {totalItems > 0 && (
-                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white">
-                    {totalItems}
-                  </span>
-                )}
+        {/* Nav */}
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+          {links.map(({ icon: Icon, label, to }) => (
+            <Fragment key={to}>
+              <NavLink to={to} onClick={onClose} className={linkClass}>
+                <Icon size={20} className="shrink-0" />
+                <span>{label}</span>
               </NavLink>
-            )}
-          </Fragment>
-        ))}
-      </nav>
 
-      {/* User + logout */}
-      <div className="border-t border-white/15 px-4 py-4">
-        <p className="mb-2 truncate text-xs text-white/60" title={email}>
-          {email}
-        </p>
-        <button
-          type="button"
-          onClick={logout}
-          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-white/80 transition-colors duration-150 hover:bg-white/10 hover:text-white active:scale-[0.98]"
-        >
-          <LogOut size={18} className="shrink-0" />
-          <span>Logout</span>
-        </button>
-      </div>
-    </aside>
+              {role === "pharmacy" && to === "/pharmacy/market" && (
+                <NavLink to="/pharmacy/cart" onClick={onClose} className={linkClass}>
+                  <ShoppingCart size={20} className="shrink-0" />
+                  <span>My Cart</span>
+                  {totalItems > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                      {totalItems}
+                    </span>
+                  )}
+                </NavLink>
+              )}
+            </Fragment>
+          ))}
+        </nav>
+
+        {/* User + logout */}
+        <div className="border-t border-white/15 px-4 py-4">
+          <p className="mb-2 truncate text-xs text-white/60" title={email}>
+            {email}
+          </p>
+          <button
+            type="button"
+            onClick={logout}
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-white/80 transition-colors duration-150 hover:bg-white/10 hover:text-white active:scale-[0.98]"
+          >
+            <LogOut size={18} className="shrink-0" />
+            <span>Logout</span>
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

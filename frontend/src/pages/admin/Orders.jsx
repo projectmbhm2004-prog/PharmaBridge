@@ -104,13 +104,13 @@ export default function Orders() {
     chips.push({ key: "company", label: `Company: ${filters.company}` });
 
   const inputClass =
-    "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
 
   return (
     <DashboardLayout role="admin" title="All Orders">
       {/* Filters bar */}
       <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Status</label>
           <select
             value={filters.status}
@@ -126,7 +126,7 @@ export default function Orders() {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Date range</label>
           <DateRangePicker
             from={filters.from}
@@ -143,7 +143,7 @@ export default function Orders() {
           />
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Order ID</label>
           <div className="relative">
             <Search
@@ -160,7 +160,7 @@ export default function Orders() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Pharmacy</label>
           <div className="relative">
             <Search
@@ -177,7 +177,7 @@ export default function Orders() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
           <label className="text-xs font-medium text-text-secondary">Company</label>
           <div className="relative">
             <Search
