@@ -240,7 +240,7 @@ export default function Products() {
               key={i}
               className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm"
             >
-              <div className="aspect-square animate-pulse bg-slate-200" />
+              <div className="h-44 animate-pulse bg-slate-200" />
               <div className="space-y-2 p-3">
                 <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" />
                 <div className="h-4 w-1/2 animate-pulse rounded bg-slate-200" />
@@ -367,7 +367,7 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
       onClick={onView}
       className="flex cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm transition duration-150 hover:-translate-y-0.5 hover:shadow-md"
     >
-      <div className="relative h-48 w-full overflow-hidden bg-slate-100">
+      <div className="relative h-44 w-full overflow-hidden bg-slate-100">
         <img
           src={main?.url || PLACEHOLDER}
           alt={product.name}
@@ -375,7 +375,7 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
           onError={(e) => {
             e.currentTarget.src = PLACEHOLDER;
           }}
-          className="h-48 w-full object-cover rounded-t-xl"
+          className="h-full w-full object-cover rounded-t-xl"
         />
         {hasOffer && (
           <span className="absolute right-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
