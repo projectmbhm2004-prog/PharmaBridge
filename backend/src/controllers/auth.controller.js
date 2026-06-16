@@ -215,7 +215,8 @@ async function register(req, res, next) {
 
     // send the verification email, but best-effort - if mail is down we still keep the account,
     // they just won't get the link (and we log why below)
-    const frontendUrl = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
+    // prefer the configured production URL; fall back to the request origin for local dev.
+    const frontendUrl = process.env.CLIENT_URL || req.headers.origin || 'http://localhost:5173';
     const verifyUrl = `${frontendUrl}/verify-email?token=${token}`;
     try {
       const info = await sendEmail({

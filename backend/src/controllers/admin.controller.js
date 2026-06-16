@@ -170,8 +170,9 @@ async function reviewRegistration(req, res, next) {
 
     // fire the accept/decline email, best-effort
     if (action === 'accept') {
+      // prefer the configured production URL; fall back to the request origin for local dev.
       const clientUrl =
-        req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
+        process.env.CLIENT_URL || req.headers.origin || 'http://localhost:5173';
       const accountLabel = type === 'company' ? 'company' : 'pharmacy';
       sendEmailSafe({
         to: record.email,
