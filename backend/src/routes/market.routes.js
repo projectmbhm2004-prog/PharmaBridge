@@ -10,6 +10,7 @@ const {
   getOffers,
   getProductById,
   getCompanies,
+  getProductTypes,
 } = require('../controllers/market.controller');
 
 const router = express.Router();
@@ -19,5 +20,6 @@ router.get('/products/top5', getTop5);
 router.get('/products/offers', getOffers);
 router.get('/products/:id', getProductById);
 router.get('/companies', getCompanies);
+router.get('/product-types', getProductTypes);
 
 module.exports = router;

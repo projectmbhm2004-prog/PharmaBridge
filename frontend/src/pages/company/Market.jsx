@@ -11,10 +11,19 @@ import CountdownTimer from "@/components/market/CountdownTimer";
 const PLACEHOLDER = "https://placehold.co/400x400/166534/ffffff?text=Product";
 const LIMIT = 12;
 
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "price_asc", label: "Price: Low to High" },
+  { value: "price_desc", label: "Price: High to Low" },
+  { value: "popular", label: "Most Ordered" },
+];
+
 export default function Market() {
   const [search, setSearch] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [typeId, setTypeId] = useState("");
+  const [sort, setSort] = useState("newest");
 
   const [companies, setCompanies] = useState([]);
   const [types, setTypes] = useState([]);
@@ -46,7 +55,7 @@ export default function Market() {
   // any filter change resets to page 1
   useEffect(() => {
     setPage(1);
-  }, [search, companyId, typeId]);
+  }, [search, companyId, typeId, sort]);
 
   // load products - page 1 replaces, later pages append. filters are server-side so they
   // apply across the whole catalogue, not just the page we have loaded
@@ -55,7 +64,7 @@ export default function Market() {
     (async () => {
       setLoading(true);
       try {
-        const params = { page, limit: LIMIT };
+        const params = { page, limit: LIMIT, sort };
         if (search.trim()) params.search = search.trim();
         if (companyId) params.company_id = companyId;
         if (typeId) params.type_id = typeId;
@@ -76,7 +85,7 @@ export default function Market() {
     return () => {
       cancelled = true;
     };
-  }, [page, search, companyId, typeId]);
+  }, [page, search, companyId, typeId, sort]);
 
   const canLoadMore = products.length < total;
 
@@ -97,6 +106,10 @@ export default function Market() {
     chips.push({ key: "company", label: companyName || "Company", clear: () => setCompanyId("") });
   if (typeId)
     chips.push({ key: "type", label: typeName || "Type", clear: () => setTypeId("") });
+  if (sort !== "newest") {
+    const label = SORT_OPTIONS.find((s) => s.value === sort)?.label;
+    chips.push({ key: "sort", label, clear: () => setSort("newest") });
+  }
 
   const inputClass =
     "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
@@ -162,12 +175,28 @@ export default function Market() {
           </select>
         </div>
 
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-text-secondary">Sort by</label>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            className={inputClass}
+          >
+            {SORT_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {chips.length > 0 && (
           <button
             onClick={() => {
               setSearch("");
               setCompanyId("");
               setTypeId("");
+              setSort("newest");
             }}
             className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-slate-50"
           >

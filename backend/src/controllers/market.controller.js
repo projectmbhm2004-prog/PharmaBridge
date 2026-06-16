@@ -255,10 +255,23 @@ async function getCompanies(req, res, next) {
   }
 }
 
+// GET /api/market/product-types - public, just the list for the marketplace filter dropdown
+async function getProductTypes(req, res, next) {
+  try {
+    const [types] = await pool.query(
+      'SELECT id, name FROM product_types ORDER BY name ASC'
+    );
+    return res.json({ success: true, data: types });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   getProducts,
   getTop5,
   getOffers,
   getProductById,
   getCompanies,
+  getProductTypes,
 };

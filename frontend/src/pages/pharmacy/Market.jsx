@@ -42,6 +42,7 @@ export default function Market() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState(""); // debounced version of searchInput
   const [companyId, setCompanyId] = useState("");
+  const [typeId, setTypeId] = useState("");
   const [sort, setSort] = useState("newest");
   // typed price inputs get debounced into the values we actually filter on
   const [minInput, setMinInput] = useState("");
@@ -51,6 +52,7 @@ export default function Market() {
 
   // loaded data
   const [companies, setCompanies] = useState([]);
+  const [types, setTypes] = useState([]);
   const [top5, setTop5] = useState([]);
   const [offers, setOffers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -88,6 +90,14 @@ export default function Market() {
     })();
     (async () => {
       try {
+        const { data } = await api.get("/market/product-types");
+        setTypes(data?.data ?? []);
+      } catch {
+        setTypes([]);
+      }
+    })();
+    (async () => {
+      try {
         const { data } = await api.get("/market/products/top5");
         setTop5(data?.data ?? []);
       } catch {
@@ -107,7 +117,7 @@ export default function Market() {
   // any filter change kicks us back to page 1
   useEffect(() => {
     setPage(1);
-  }, [search, companyId, sort, minPrice, maxPrice]);
+  }, [search, companyId, typeId, sort, minPrice, maxPrice]);
 
   // load products - page 1 replaces the list, later pages append (infinite scroll style)
   useEffect(() => {
@@ -118,6 +128,7 @@ export default function Market() {
         const params = { page, limit: LIMIT, sort };
         if (search) params.search = search;
         if (companyId) params.company_id = companyId;
+        if (typeId) params.type_id = typeId;
         if (minPrice !== "") params.min_price = minPrice;
         if (maxPrice !== "") params.max_price = maxPrice;
         const { data } = await api.get("/market/products", { params });
@@ -137,12 +148,17 @@ export default function Market() {
     return () => {
       cancelled = true;
     };
-  }, [page, search, companyId, sort, minPrice, maxPrice]);
+  }, [page, search, companyId, typeId, sort, minPrice, maxPrice]);
 
   const companyName = useMemo(() => {
     const match = companies.find((c) => String(c.id) === String(companyId));
     return match?.name ?? "";
   }, [companies, companyId]);
+
+  const typeName = useMemo(() => {
+    const match = types.find((t) => String(t.id) === String(typeId));
+    return match?.name ?? "";
+  }, [types, typeId]);
 
   const canLoadMore = products.length < total;
 
@@ -159,6 +175,7 @@ export default function Market() {
   const chips = [];
   if (search) chips.push({ key: "search", label: `"${search}"`, clear: () => { setSearchInput(""); setSearch(""); } });
   if (companyId) chips.push({ key: "company", label: companyName || "Company", clear: () => setCompanyId("") });
+  if (typeId) chips.push({ key: "type", label: typeName || "Type", clear: () => setTypeId("") });
   if (minPrice !== "" || maxPrice !== "") {
     const label =
       minPrice !== "" && maxPrice !== ""
@@ -215,6 +232,22 @@ export default function Market() {
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-text-secondary">Type</label>
+            <select
+              value={typeId}
+              onChange={(e) => setTypeId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">All Types</option>
+              {types.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
                 </option>
               ))}
             </select>

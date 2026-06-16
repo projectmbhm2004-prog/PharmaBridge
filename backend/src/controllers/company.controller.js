@@ -51,6 +51,15 @@ function toInt(value, fallback) {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
+// whitelist of sort options -> ORDER BY. never interpolate user input into the clause.
+const SORT_MAP = {
+  newest: 'p.created_at DESC',
+  oldest: 'p.created_at ASC',
+  price_asc: 'p.price ASC',
+  price_desc: 'p.price DESC',
+  popular: 'p.total_orders DESC',
+};
+
 // tell a pharmacy its order got rejected. shared by rejectOrder (the up-front reject) and
 // acceptOrder's "everything got rejected" path so both send the exact same notification + event.
 // best-effort, never throws back into the request.
@@ -1907,10 +1916,11 @@ async function recordPayment(req, res, next) {
 // products and competitors' alike.
 async function getMarket(req, res, next) {
   try {
-    const { search, company_id, type_id, category_id } = req.query;
+    const { search, company_id, type_id, category_id, sort } = req.query;
     const page = toInt(req.query.page, 1);
     const limit = toInt(req.query.limit, 20);
     const offset = (page - 1) * limit;
+    const orderBy = SORT_MAP[sort] || SORT_MAP.newest;
 
     const conditions = ['p.is_active = TRUE'];
     const params = [];
@@ -1955,7 +1965,7 @@ async function getMarket(req, res, next) {
          JOIN product_types pt ON pt.id = p.product_type_id
          JOIN product_categories pc ON pc.id = p.category_id
          ${where}
-        ORDER BY p.created_at DESC
+        ORDER BY ${orderBy}
         LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
