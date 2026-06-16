@@ -417,7 +417,7 @@ function Carousel({ title, subtitle, icon: Icon, iconClass, children }) {
       </div>
       <div
         ref={scrollerRef}
-        className="flex gap-4 overflow-x-auto scroll-smooth pb-2 [scrollbar-width:thin]"
+        className="flex gap-4 overflow-x-auto scroll-smooth pb-2 scrollbar-thin"
       >
         {children}
       </div>

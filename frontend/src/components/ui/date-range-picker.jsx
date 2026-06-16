@@ -61,7 +61,7 @@ export default function DateRangePicker({
           type="button"
           disabled={disabled}
           className={cn(
-            "inline-flex h-[38px] min-w-56 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors duration-150",
+            "inline-flex h-9.5 min-w-56 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors duration-150",
             "hover:border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/25",
             "disabled:cursor-not-allowed disabled:opacity-50",
             !fromDate && "text-text-secondary",
