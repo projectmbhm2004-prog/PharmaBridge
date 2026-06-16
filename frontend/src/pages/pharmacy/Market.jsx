@@ -509,7 +509,7 @@ function OfferCard({ product, onClick }) {
           </span>
         </div>
         <div className="mt-2">
-          <CountdownTimer offerEndsAt={product.offer_ends_at} />
+          <CountdownTimer endsAt={product.offer_ends_at} />
         </div>
       </div>
     </button>
@@ -519,6 +519,10 @@ function OfferCard({ product, onClick }) {
 // the main grid product card, this one has the add-to-cart button
 function ProductCard({ product, index, adding, onAdd, onOpen }) {
   const hasOffer = !!product.has_offer && product.offer_price != null;
+  const offerLive =
+    hasOffer &&
+    (!product.offer_ends_at ||
+      new Date(product.offer_ends_at).getTime() > Date.now());
   const lowStock =
     product.quantity_in_stock != null && product.quantity_in_stock < 10;
   // render exactly one image: the first of the array (ignoring sort_order, since
@@ -555,7 +559,7 @@ function ProductCard({ product, index, adding, onAdd, onOpen }) {
             {product.company_name}
           </span>
         )}
-        {hasOffer && (
+        {offerLive && (
           <span className="absolute right-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
             OFFER
           </span>
@@ -598,6 +602,12 @@ function ProductCard({ product, index, adding, onAdd, onOpen }) {
             </span>
           )}
         </div>
+
+        {hasOffer && (
+          <div className="mt-1">
+            <CountdownTimer endsAt={product.offer_ends_at} />
+          </div>
+        )}
 
         {product.has_bulk_discount && (
           <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-green-600">

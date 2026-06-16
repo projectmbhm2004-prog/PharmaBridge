@@ -7,6 +7,7 @@ import api from "@/lib/api";
 import { formatCurrency, toISODate, parseDateValue } from "@/lib/utils";
 import DashboardLayout from "@/components/shared/DashboardLayout";
 import DatePicker from "@/components/ui/date-picker";
+import CountdownTimer from "@/components/market/CountdownTimer";
 
 const PLACEHOLDER = "https://placehold.co/400x400/166534/ffffff?text=Product";
 
@@ -362,6 +363,11 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
   // have multiple images sharing sort_order=0)
   const main = images[0];
   const hasOffer = !!product.has_offer && product.offer_price != null;
+  // the OFFER badge only makes sense while the offer is actually live
+  const offerLive =
+    hasOffer &&
+    (!product.offer_ends_at ||
+      new Date(product.offer_ends_at).getTime() > Date.now());
 
   return (
     <motion.div
@@ -387,7 +393,7 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
             <PackageOpen size={32} />
           </div>
         )}
-        {hasOffer && (
+        {offerLive && (
           <span className="absolute right-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
             OFFER
           </span>
@@ -415,6 +421,12 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
             </span>
           )}
         </div>
+
+        {hasOffer && (
+          <div className="mt-1">
+            <CountdownTimer endsAt={product.offer_ends_at} />
+          </div>
+        )}
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span

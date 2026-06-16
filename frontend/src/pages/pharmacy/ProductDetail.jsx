@@ -288,7 +288,7 @@ export default function ProductDetail() {
                 Save {Number(unitDiscount).toFixed(0)}%
               </span>
             )}
-            {hasOffer && <CountdownTimer offerEndsAt={product.offer_ends_at} />}
+            {hasOffer && <CountdownTimer endsAt={product.offer_ends_at} />}
           </div>
           {unitsCount > 1 && (
             <p className="mt-1 text-sm text-text-secondary">

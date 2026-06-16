@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import DashboardLayout from "@/components/shared/DashboardLayout";
+import CountdownTimer from "@/components/market/CountdownTimer";
 
 const PLACEHOLDER = "https://placehold.co/400x400/166534/ffffff?text=Product";
 const LIMIT = 12;
@@ -270,6 +271,10 @@ export default function Market() {
 // market product card for the admin view - read-only, no add-to-cart
 function ProductCard({ product, index }) {
   const hasOffer = !!product.has_offer && product.offer_price != null;
+  const offerLive =
+    hasOffer &&
+    (!product.offer_ends_at ||
+      new Date(product.offer_ends_at).getTime() > Date.now());
 
   return (
     <motion.div
@@ -293,7 +298,7 @@ function ProductCard({ product, index }) {
             {product.company_name}
           </span>
         )}
-        {hasOffer && (
+        {offerLive && (
           <span className="absolute right-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
             OFFER
           </span>
@@ -321,6 +326,12 @@ function ProductCard({ product, index }) {
             </span>
           )}
         </div>
+
+        {hasOffer && (
+          <div className="mt-1">
+            <CountdownTimer endsAt={product.offer_ends_at} />
+          </div>
+        )}
 
         <StarRating value={Number(product.rating_avg) || 0} count={product.rating_count} />
       </div>

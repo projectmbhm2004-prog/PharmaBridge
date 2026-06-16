@@ -1,51 +1,56 @@
 import { useEffect, useState } from "react";
 
-// ms left until endsAt, or null if the date is junk
+// ms left until endsAt. null when there's no date at all, NaN when the date is junk.
 function getRemaining(endsAt) {
   if (!endsAt) return null;
   const end = new Date(endsAt).getTime();
   if (Number.isNaN(end)) return null;
-  return Math.max(0, end - Date.now());
+  return end - Date.now();
 }
 
-// ms -> "05:09:32"
-function formatHMS(ms) {
+// ms -> "2d 14h 30m 22s"
+function formatDHMS(ms) {
   const totalSeconds = Math.floor(ms / 1000);
-  const h = Math.floor(totalSeconds / 3600);
+  const d = Math.floor(totalSeconds / 86400);
+  const h = Math.floor((totalSeconds % 86400) / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${d}d ${h}h ${m}m ${s}s`;
 }
 
-// live HH:MM:SS countdown to when an offer ends. green normally, goes red + pulses under an
-// hour, and shows "Expired" once it's done.
-export default function CountdownTimer({ offerEndsAt }) {
-  const [remaining, setRemaining] = useState(() => getRemaining(offerEndsAt));
+// Compact offer indicator that fits inside a product card.
+//   endsAt null      -> green "✦ Limited Offer"
+//   endsAt in past   -> gray "Offer Ended"
+//   endsAt in future -> amber "Ends in 2d 14h 30m 22s", ticking every second
+export default function CountdownTimer({ endsAt }) {
+  const [remaining, setRemaining] = useState(() => getRemaining(endsAt));
 
   useEffect(() => {
-    setRemaining(getRemaining(offerEndsAt));
+    setRemaining(getRemaining(endsAt));
+    // no end date -> nothing to tick
+    if (!endsAt) return;
     const id = setInterval(() => {
-      setRemaining(getRemaining(offerEndsAt));
+      setRemaining(getRemaining(endsAt));
     }, 1000);
     return () => clearInterval(id);
-  }, [offerEndsAt]);
+  }, [endsAt]);
 
-  if (remaining == null) return null;
-
-  if (remaining <= 0) {
-    return <span className="text-xs font-semibold text-red-600">Expired</span>;
+  // no end date: open-ended "Limited Offer" badge
+  if (remaining == null) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600">
+        ✦ Limited Offer
+      </span>
+    );
   }
 
-  const urgent = remaining < 60 * 60 * 1000; // under one hour
+  if (remaining <= 0) {
+    return <span className="text-xs font-semibold text-slate-400">Offer Ended</span>;
+  }
 
   return (
-    <span
-      className={`font-mono text-xs font-semibold tabular-nums ${
-        urgent ? "animate-pulse text-red-600" : "text-green-600"
-      }`}
-    >
-      {formatHMS(remaining)}
+    <span className="font-mono text-xs font-semibold tabular-nums text-amber-600">
+      Ends in {formatDHMS(remaining)}
     </span>
   );
 }
