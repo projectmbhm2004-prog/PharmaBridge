@@ -1,20 +1,20 @@
-// thin wrapper over the nodemailer transporter - every outgoing email goes through sendEmail()
+// thin wrapper over Resend - every outgoing email goes through sendEmail()
 
-const transporter = require('../config/nodemailer');
+const { Resend } = require('resend');
 
-// fire off an HTML email. resolves with nodemailer's send info.
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// fire off an HTML email. resolves with Resend's send response.
 async function sendEmail({ to, subject, html }) {
   try {
-    const from = `PharmaBridge <${process.env.EMAIL_USER}>`;
-
-    const info = await transporter.sendMail({
-      from,
-      to,
+    const result = await resend.emails.send({
+      from: 'PharmaBridge <onboarding@resend.dev>',
+      to: [to],
       subject,
       html,
     });
 
-    return info;
+    return result;
   } catch (err) {
     // log the real reason, rethrow so the caller decides what to tell the user
     console.error('[email] failed to send:', err.message);
