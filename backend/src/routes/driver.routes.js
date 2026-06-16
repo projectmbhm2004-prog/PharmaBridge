@@ -1,8 +1,4 @@
-// ============================================================
-//  Driver routes  →  mounted at /api/driver
-// ============================================================
-//  Every route requires a valid JWT (auth) + the 'driver' role.
-// ============================================================
+// /api/driver - all routes need a valid JWT + the 'driver' role
 
 const express = require('express');
 
@@ -19,7 +15,7 @@ const {
 
 const router = express.Router();
 
-// Apply auth + driver role to every route in this router.
+// driver role on everything below
 router.use(auth, requireRole('driver'));
 
 router.get('/orders', getOrders);

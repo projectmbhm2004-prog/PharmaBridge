@@ -3,7 +3,7 @@ import { ShoppingCart } from "lucide-react";
 import { NAV_LINKS } from "@/components/shared/Sidebar";
 import useCart from "@/hooks/useCart";
 
-/** Fixed bottom tab bar (mobile only, hidden md+). */
+// mobile-only bottom tab bar, hidden from md up
 export default function BottomNav({ role }) {
   const links = NAV_LINKS[role] ?? [];
   const { totalItems } = useCart();

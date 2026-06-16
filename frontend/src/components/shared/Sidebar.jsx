@@ -17,7 +17,7 @@ import {
 import useAuth from "@/hooks/useAuth";
 import useCart from "@/hooks/useCart";
 
-/** Navigation links per role — shared by Sidebar and BottomNav. */
+// nav links keyed by role, shared between the Sidebar and the mobile BottomNav
 // eslint-disable-next-line react-refresh/only-export-components
 export const NAV_LINKS = {
   admin: [
@@ -48,7 +48,7 @@ export const NAV_LINKS = {
   ],
 };
 
-/** Fixed desktop sidebar (hidden on mobile). */
+// desktop sidebar, hidden on mobile (the BottomNav covers that)
 export default function Sidebar({ role }) {
   const { user, logout } = useAuth();
   const { totalItems } = useCart();

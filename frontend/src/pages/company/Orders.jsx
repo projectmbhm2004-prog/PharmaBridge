@@ -22,7 +22,7 @@ import DateRangePicker from "@/components/ui/date-range-picker";
 
 const LIMIT = 20;
 
-// Filter tabs across the top. "" = All.
+// the filter tabs along the top. "" means All.
 const TABS = [
   { value: "pending", label: "Pending" },
   { value: "accepted", label: "Accepted" },
@@ -34,7 +34,7 @@ const TABS = [
   { value: "", label: "All" },
 ];
 
-// Lifecycle used to render the status timeline for an order.
+// the full lifecycle, used to draw the status timeline on an order
 const LIFECYCLE = [
   "pending",
   "accepted",
@@ -64,7 +64,7 @@ export default function Orders() {
   async function load() {
     setLoading(true);
     try {
-      // All filters are server-side so they apply across every page.
+      // filters are all server-side so they apply across every page, not just the loaded one
       const params = { page, limit: LIMIT };
       if (status) params.status = status;
       if (search.trim()) params.search = search.trim();
@@ -92,7 +92,7 @@ export default function Orders() {
     setStatus(value);
   }
 
-  // Date/search changes also reset to page 1.
+  // changing the date or search also bumps us back to page 1
   function updateFilter(setter, value) {
     setPage(1);
     setter(value);
@@ -263,11 +263,11 @@ export default function Orders() {
   );
 }
 
-/** Single order summary card. */
+// one order's summary card
 function OrderCard({ order, index, onAccept, onReject, onReassign, onView }) {
   const items = Array.isArray(order.items) ? order.items : [];
   const showDetail = DETAIL_STATUSES.includes(order.status);
-  // Flag accepted/in-flight orders that had part of their quantity rejected.
+// flag the accepted/in-flight orders where part of the quantity got rejected at accept time
   const hasRejections =
     order.status !== "pending" &&
     order.status !== "rejected" &&
@@ -366,18 +366,15 @@ function OrderCard({ order, index, onAccept, onReject, onReassign, onView }) {
   );
 }
 
-/**
- * Accept modal — review each line item, optionally reject part/all of its
- * quantity (with a reason), then assign a driver and confirm. Leaving every
- * reject field at 0 is a plain full accept, identical to the old behaviour. If
- * EVERY item is fully rejected the order is rejected instead (no driver needed).
- */
+// accept modal - go through each line item, optionally reject part or all of it (with a reason),
+// then pick a driver and confirm. leave every reject field at 0 and it's just a plain full accept.
+// if every single item ends up fully rejected, it becomes a reject instead and no driver is needed.
 function AcceptModal({ order, onClose, onDone }) {
   const [drivers, setDrivers] = useState([]);
   const [driverId, setDriverId] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  // order_item_id -> { qty: string, reason: string }
+// keyed by order_item_id -> { qty: string, reason: string }
   const [rejections, setRejections] = useState({});
 
   const items = order && Array.isArray(order.items) ? order.items : [];
@@ -392,7 +389,7 @@ function AcceptModal({ order, onClose, onDone }) {
         const { data } = await api.get("/company/drivers", {
           params: { status: "accepted" },
         });
-        // Only active (non-fired) accepted drivers can take a delivery.
+        // only accepted, non-fired drivers can be handed a delivery
         const list = (data?.data ?? []).filter((d) => !d.is_fired);
         setDrivers(list);
       } catch {
@@ -403,7 +400,7 @@ function AcceptModal({ order, onClose, onDone }) {
     })();
   }, [order]);
 
-  // Rejected quantity for an item, clamped to [0, quantity_ordered].
+// rejected qty for a line, clamped between 0 and the amount ordered
   function rejectedQty(it) {
     const raw = rejections[it.id]?.qty;
     const n = Math.floor(Number(raw));
@@ -444,7 +441,7 @@ function AcceptModal({ order, onClose, onDone }) {
       toast.error("Please select a driver.");
       return;
     }
-    // Send only non-zero rejections.
+    // only bother sending the rejections that are actually > 0
     const item_rejections = items
       .filter((it) => rejectedQty(it) > 0)
       .map((it) => ({
@@ -623,7 +620,7 @@ function AcceptModal({ order, onClose, onDone }) {
   );
 }
 
-/** Reject modal — optional reason. */
+// reject modal - reason is optional here
 function RejectModal({ order, onClose, onDone }) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -679,7 +676,7 @@ function RejectModal({ order, onClose, onDone }) {
   );
 }
 
-/** Reassign modal — swaps the driver on an in-progress order. */
+// reassign modal - swap the driver on an order that's already in progress
 function ReassignModal({ order, onClose, onDone }) {
   const [drivers, setDrivers] = useState([]);
   const [driverId, setDriverId] = useState("");
@@ -695,8 +692,7 @@ function ReassignModal({ order, onClose, onDone }) {
         const { data } = await api.get("/company/drivers", {
           params: { status: "accepted" },
         });
-        // Active (non-fired) accepted drivers, excluding the one currently
-        // assigned to this order.
+        // accepted, non-fired drivers, minus whoever's already on this order
         const list = (data?.data ?? []).filter(
           (d) => !d.is_fired && Number(d.id) !== Number(order.driver_id)
         );
@@ -791,7 +787,7 @@ function ReassignModal({ order, onClose, onDone }) {
   );
 }
 
-/** Slide-over panel with full order details + status timeline. */
+// slide-over panel with the full order details + the status timeline
 function DetailPanel({ order, onClose }) {
   const items = order && Array.isArray(order.items) ? order.items : [];
 
@@ -917,7 +913,7 @@ function DetailPanel({ order, onClose }) {
   );
 }
 
-/** Vertical lifecycle indicator highlighting reached statuses. */
+// vertical timeline that lights up the statuses the order has reached
 function Timeline({ status }) {
   if (status === "rejected") {
     return (
@@ -959,7 +955,7 @@ function Timeline({ status }) {
   );
 }
 
-/** Centered modal with backdrop, scale + fade. */
+// centered modal with a backdrop, scales + fades in
 function ModalShell({ open, onClose, title, children, size = "md" }) {
   const maxWidth = size === "lg" ? "max-w-lg" : "max-w-md";
   return (

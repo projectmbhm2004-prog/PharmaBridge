@@ -1,17 +1,7 @@
-// ============================================================
-//  Role-based access control middleware
-// ============================================================
-// requireRole('admin', 'company') -> middleware that allows the
-// request through only when req.user.role is one of the listed roles.
-// Must run AFTER the auth middleware (which sets req.user).
-// ============================================================
+// role gate. requireRole('admin', 'company') only lets the request through when
+// req.user.role is one of those. has to run AFTER auth, which is what sets req.user.
 
-/**
- * Factory: build a middleware that restricts a route to the given roles.
- *
- * @param {...string} roles  allowed roles (e.g. 'admin', 'company')
- * @returns {Function} Express middleware
- */
+// builds a middleware locked to the roles you pass in
 function requireRole(...roles) {
   return function (req, res, next) {
     if (!req.user || !req.user.role) {

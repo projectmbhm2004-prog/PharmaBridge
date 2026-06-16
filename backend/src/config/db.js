@@ -1,16 +1,8 @@
-// ============================================================
-//  Database configuration — MySQL connection pool (mysql2/promise)
-// ============================================================
-// Creates a single shared connection pool used across the whole
-// application. On startup it also runs a small, idempotent migration
-// to make sure the email-verification columns exist on the users table.
-// ============================================================
+// one shared mysql2 pool for the whole app. on boot we also run a tiny idempotent
+// migration so the schema lines up even on older DBs that predate some columns.
 
 const mysql = require('mysql2/promise');
 
-// ------------------------------------------------------------
-// Connection pool
-// ------------------------------------------------------------
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -18,20 +10,13 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
   waitForConnections: true,
-  connectionLimit: 10, // max 10 connections
+  connectionLimit: 10, // 10 felt like plenty for our load, bump if we start queueing
   queueLimit: 0,
-  timezone: '+00:00', // store / read everything in UTC
+  timezone: '+00:00', // everything in/out is UTC, we format in the frontend
   charset: 'utf8mb4_unicode_ci',
 });
 
-/**
- * Check whether a column already exists on a given table.
- * Uses INFORMATION_SCHEMA so it works without throwing.
- *
- * @param {string} table
- * @param {string} column
- * @returns {Promise<boolean>}
- */
+// does this column exist? goes through INFORMATION_SCHEMA so it never throws if it's missing
 async function columnExists(table, column) {
   const [rows] = await pool.query(
     `SELECT COUNT(*) AS cnt
@@ -44,12 +29,7 @@ async function columnExists(table, column) {
   return rows[0].cnt > 0;
 }
 
-/**
- * Check whether a table already exists in the current database.
- *
- * @param {string} table
- * @returns {Promise<boolean>}
- */
+// same idea, for whole tables
 async function tableExists(table) {
   const [rows] = await pool.query(
     `SELECT COUNT(*) AS cnt
@@ -61,13 +41,7 @@ async function tableExists(table) {
   return rows[0].cnt > 0;
 }
 
-/**
- * Return metadata for a single column, or null when it does not exist.
- *
- * @param {string} table
- * @param {string} column
- * @returns {Promise<{type: string, nullable: 'YES'|'NO'}|null>}
- */
+// returns {type, nullable} for a column, or null if it isn't there - used by the migration to decide what to ALTER
 async function columnInfo(table, column) {
   const [rows] = await pool.query(
     `SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable
@@ -80,14 +54,7 @@ async function columnInfo(table, column) {
   return rows.length ? rows[0] : null;
 }
 
-/**
- * Return the column names of an index, ordered by their position in the index.
- * Empty array when the index does not exist.
- *
- * @param {string} table
- * @param {string} indexName
- * @returns {Promise<string[]>}
- */
+// the columns making up an index, in order. empty array if the index doesn't exist
 async function indexColumns(table, indexName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME
@@ -101,17 +68,8 @@ async function indexColumns(table, indexName) {
   return rows.map((r) => r.COLUMN_NAME);
 }
 
-/**
- * Idempotent startup migration:
- *  - add users.email_verified (BOOLEAN DEFAULT FALSE) if missing
- *  - add users.email_verification_token (VARCHAR 255 NULL) if missing
- *  - mark every existing admin as email_verified = TRUE
- *  - create product_units (tiered packaging) table if missing
- *  - backfill one default "Single" unit for every product that has none
- *  - add cart_items.product_unit_id / order_items.product_unit_id if missing
- *
- * Safe to run on every boot.
- */
+// startup migration - all of this is safe to run on every boot, each step checks
+// before it touches anything. grew over time as we added features, hence the length.
 async function runStartupMigration() {
   try {
     if (!(await columnExists('users', 'email_verified'))) {
@@ -130,19 +88,15 @@ async function runStartupMigration() {
       console.log('[db] migration: added users.email_verification_token');
     }
 
-    // Admins never need to verify their email.
+    // admins skip email verification, just flip them all on
     await pool.query(
       `UPDATE users
           SET email_verified = TRUE
         WHERE role = 'admin'`
     );
 
-    // --------------------------------------------------------
-    // Tiered packaging / units
-    // --------------------------------------------------------
-    // product_units holds the sellable packaging options for a product
-    // (Single, Box (10), Carton (24), ...). final_price, when set, overrides
-    // the calculated base_price * units_count * (1 - discount_percent/100).
+    // tiered packaging table - the Single / Box / Carton options per product.
+    // final_price overrides the calc when it's set (see utils/pricing.js).
     if (!(await tableExists('product_units'))) {
       await pool.query(
         `CREATE TABLE product_units (
@@ -164,9 +118,8 @@ async function runStartupMigration() {
       console.log('[db] migration: created product_units');
     }
 
-    // Backfill: every product that has no packaging row gets one default
-    // "Single" unit (units_count = 1, no discount, no override) so its price
-    // continues to resolve to the current base price.
+    // any product with no packaging row gets a default "Single" so its price still
+    // resolves to the plain base price - otherwise old products would price as 0
     const [backfill] = await pool.query(
       `INSERT INTO product_units
          (product_id, unit_name, units_count, discount_percent, final_price, is_default)
@@ -182,7 +135,7 @@ async function runStartupMigration() {
       );
     }
 
-    // cart_items.product_unit_id — which packaging the pharmacy selected.
+    // remembers which packaging the pharmacy picked in the cart
     if (!(await columnExists('cart_items', 'product_unit_id'))) {
       await pool.query(
         `ALTER TABLE cart_items
@@ -192,8 +145,8 @@ async function runStartupMigration() {
       console.log('[db] migration: added cart_items.product_unit_id');
     }
 
-    // order_items.product_unit_id — packaging captured at order time (so the
-    // accept-time stock decrement and order display know base units / labels).
+    // freeze the packaging onto the order line at order time, so stock decrement and the
+    // order display still know the base-unit count / label even if the unit changes later
     if (!(await columnExists('order_items', 'product_unit_id'))) {
       await pool.query(
         `ALTER TABLE order_items
@@ -203,18 +156,11 @@ async function runStartupMigration() {
       console.log('[db] migration: added order_items.product_unit_id');
     }
 
-    // --------------------------------------------------------
-    // Cart uniqueness now keys on packaging too
-    // --------------------------------------------------------
-    // The same product may sit in a cart more than once with DIFFERENT
-    // packaging, while the SAME product + SAME packaging still merges into one
-    // line. So widen uq_cart_item from (pharmacy_id, product_id) to
-    // (pharmacy_id, product_id, product_unit_id).
-    //
-    // MySQL treats NULLs as distinct in a unique index, so multiple NULL
-    // product_unit_id rows would NOT merge. To keep the merge behaviour correct
-    // we first backfill any NULL product_unit_id with the product's default
-    // packaging (is_default, else smallest units_count) before widening the key.
+    // widening the cart unique key to include packaging. the same product can sit in the
+    // cart twice with different packaging, but same product + same packaging should still
+    // merge into one line. catch: MySQL treats NULLs as distinct in a unique index, so NULL
+    // unit rows wouldn't merge - so backfill NULLs with the product's default unit first,
+    // THEN widen the key.
     const cartKeyCols = await indexColumns('cart_items', 'uq_cart_item');
     if (cartKeyCols.length > 0 && !cartKeyCols.includes('product_unit_id')) {
       const [filled] = await pool.query(
@@ -232,8 +178,8 @@ async function runStartupMigration() {
           `[db] migration: backfilled product_unit_id on ${filled.affectedRows} cart rows`
         );
       }
-      // Drop + re-add in one statement so there is never a window without the
-      // index backing the pharmacy_id foreign key (pharmacy_id stays leftmost).
+      // drop + re-add in one ALTER so there's never a moment where pharmacy_id has no index
+      // backing its foreign key (pharmacy_id stays the leftmost column)
       await pool.query(
         `ALTER TABLE cart_items
            DROP INDEX uq_cart_item,
@@ -244,17 +190,12 @@ async function runStartupMigration() {
       );
     }
 
-    // --------------------------------------------------------
-    // Fix trg_update_product_total_orders to net out rejections
-    // --------------------------------------------------------
-    // The original trigger added the full quantity_ordered to products.
-    // total_orders on accept. With accept-time partial rejection a company can
-    // reject part of an item, so total_orders must increment by
-    // (quantity_ordered - quantity_rejected) instead. Recreate the trigger with
-    // the corrected formula. Idempotent: only rebuild when the live trigger body
-    // does not already reference quantity_rejected. (A CREATE TRIGGER with a
-    // BEGIN..END body is a single statement to the server — no DELIMITER needed
-    // over the wire, and multipleStatements stays off.)
+    // the old trigger added the full quantity_ordered to total_orders on accept. once we
+    // allowed partial rejection at accept time that was wrong - it should add
+    // (quantity_ordered - quantity_rejected). rebuild it, but only if the live trigger body
+    // doesn't already mention quantity_rejected so we don't churn it every boot.
+    // (a CREATE TRIGGER with a BEGIN..END body is one statement over the wire - no DELIMITER
+    // needed and multipleStatements stays off.)
     const [trgRows] = await pool.query(
       `SELECT ACTION_STATEMENT
          FROM information_schema.TRIGGERS
@@ -282,16 +223,11 @@ async function runStartupMigration() {
       );
     }
 
-    // --------------------------------------------------------
-    // Required public profile fields: description + address
-    // --------------------------------------------------------
-    // Every company / pharmacy / driver must carry a publicly displayed
-    // description (TEXT NOT NULL) and address (VARCHAR(255) NOT NULL).
-    // companies/pharmacies already have a nullable TEXT address; drivers had
-    // none. Existing rows are backfilled with 'N/A' BEFORE the NOT NULL
-    // constraint is applied so the migration is safe on a populated DB.
+    // every company / pharmacy / driver needs a public description + address that aren't null.
+    // drivers had neither column. backfill existing rows with 'N/A' BEFORE adding NOT NULL,
+    // otherwise the constraint blows up on a populated DB.
     for (const tbl of ['companies', 'pharmacies', 'drivers']) {
-      // description — TEXT NOT NULL
+      // description first
       if (!(await columnExists(tbl, 'description'))) {
         await pool.query(`ALTER TABLE \`${tbl}\` ADD COLUMN description TEXT NULL`);
         console.log(`[db] migration: added ${tbl}.description`);
@@ -306,7 +242,7 @@ async function runStartupMigration() {
         console.log(`[db] migration: set ${tbl}.description NOT NULL`);
       }
 
-      // address — VARCHAR(255) NOT NULL
+      // then address
       if (!(await columnExists(tbl, 'address'))) {
         await pool.query(`ALTER TABLE \`${tbl}\` ADD COLUMN address VARCHAR(255) NULL`);
         console.log(`[db] migration: added ${tbl}.address`);
@@ -324,17 +260,12 @@ async function runStartupMigration() {
 
     console.log('[db] startup migration complete');
   } catch (err) {
-    // Don't crash the whole process on a migration hiccup, but make it loud.
+    // don't take the whole process down over a migration hiccup, but make it loud in the logs
     console.error('[db] startup migration failed:', err.message);
   }
 }
 
-/**
- * Verify the pool can actually reach the database and then run the
- * startup migration. Called once from app.js during boot.
- *
- * @returns {Promise<void>}
- */
+// ping once to make sure we can actually reach MySQL, then run the migration. called from app.js on boot.
 async function initDb() {
   try {
     const conn = await pool.getConnection();
@@ -348,7 +279,7 @@ async function initDb() {
   }
 }
 
-// Export the pool itself (per spec). initDb is attached as a helper —
-// note: do NOT reassign `pool.pool`, that is an internal mysql2 property.
+// export the pool directly. initDb hangs off it as a helper -
+// don't reassign pool.pool, that's an internal mysql2 thing
 module.exports = pool;
 module.exports.initDb = initDb;

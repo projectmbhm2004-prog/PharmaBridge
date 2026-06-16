@@ -51,7 +51,7 @@ export default function ProductDetail() {
         setProduct(prod);
         setActiveImage(0);
         setQty(1);
-        // Default packaging: the one flagged is_default, else the smallest.
+        // start on the default packaging - the is_default one, or just the first/smallest
         const units = prod?.units ?? [];
         const def =
           units.find((u) => u.is_default === 1 || u.is_default === true) ||
@@ -78,8 +78,8 @@ export default function ProductDetail() {
   const hasOffer = !!product?.has_offer && product?.offer_price != null;
   const stock = Number(product?.quantity_in_stock) || 0;
 
-  // Packaging units. Fall back to a synthetic "Single" unit for older products
-  // that predate packaging (so the page still works).
+  // packaging options. older products predate packaging, so fake a "Single" unit for them
+  // so the page still renders something sensible
   const units = useMemo(() => {
     const list = product?.units ?? [];
     if (list.length > 0) return list;
@@ -107,16 +107,16 @@ export default function ProductDetail() {
   const unitList = Number(selectedUnit?.list_price ?? product?.price) || 0;
   const unitDiscount = Number(selectedUnit?.discount_percent) || 0;
   const unitHasDiscount = unitPrice < unitList - 0.001;
-  // quantity is the number of PACKAGES; stock is base units.
+  // qty is in PACKAGES, stock is in base units, so divide to get how many packs we can sell
   const maxPackages = Math.floor(stock / unitsCount);
   const inStock = maxPackages >= 1;
 
-  // Clamp quantity if the selected packaging allows fewer packages than chosen.
+  // if they switch to a bigger pack that allows fewer, clamp the quantity down
   useEffect(() => {
     setQty((q) => Math.min(Math.max(1, q), Math.max(1, maxPackages)));
   }, [selectedUnitId, maxPackages]);
 
-  // Rating breakdown
+  // star breakdown for the ratings bars
   const breakdown = useMemo(() => {
     const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     for (const r of product?.ratings ?? []) {
@@ -127,8 +127,8 @@ export default function ProductDetail() {
   }, [product]);
   const ratingsTotal = product?.ratings?.length ?? 0;
 
-  // Multi-company cart: adding always succeeds unless the backend rejects it
-  // (stock / availability), which addItem surfaces as a toast.
+  // multi-company cart, so adding basically always works unless the backend says no on
+  // stock/availability - and addItem already toasts that
   async function addToCart() {
     if (!product) return;
     setAdding(true);
@@ -496,7 +496,7 @@ export default function ProductDetail() {
   );
 }
 
-/** Read-only 5-star display. */
+// plain read-only 5-star display
 function Stars({ value, count, size = 14 }) {
   return (
     <div className="mt-1 flex items-center gap-1">

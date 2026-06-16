@@ -18,9 +18,8 @@ const PAYMENT_STATUSES = [
   { value: "unpaid", label: "Unpaid" },
 ];
 
-// Classify a record by how much of the bill has been settled. Credit lines
-// (debt < 0) count as fully paid. Mirrors the company-side semantics so a
-// pharmacy and its supplier read the same ledger the same way.
+// label a record by how much of it is paid off. a credit line (debt < 0) counts as fully paid.
+// matches the company-side logic exactly so the pharmacy and its supplier see the same ledger.
 function paymentStatusOf(r) {
   const debt = Number(r.debt_amount) || 0;
   const paid = Number(r.paid_amount) || 0;
@@ -52,7 +51,7 @@ export default function Financial() {
     })();
   }, []);
 
-  // summary = v_pharmacy_debts rows (one per company dealt with).
+  // summary is the v_pharmacy_debts rows, one per company they've dealt with
   const totals = summary.reduce(
     (acc, s) => ({
       spent: acc.spent + (Number(s.total_billed) || 0),
@@ -62,8 +61,8 @@ export default function Financial() {
     { spent: 0, paid: 0, debt: 0 }
   );
 
-  // Supplier list for the dropdown — built from the full (unfiltered) result
-  // set so it doesn't shrink as the user narrows the records.
+  // supplier dropdown options - built from the full unfiltered set so it doesn't shrink
+  // as the user narrows things down
   const companies = useMemo(() => {
     const map = new Map();
     for (const r of records) {
@@ -74,7 +73,7 @@ export default function Financial() {
     return [...map.entries()].map(([id, name]) => ({ id, name }));
   }, [records]);
 
-  // Client-side filtering (the API call is intentionally left untouched).
+  // we filter on the client here on purpose, the API call stays as-is
   const visibleRecords = useMemo(() => {
     return records.filter((r) => {
       if (filters.company_id && String(r.company_id) !== String(filters.company_id)) {
@@ -83,8 +82,7 @@ export default function Financial() {
       if (filters.from && r.order_date && r.order_date < filters.from) {
         return false;
       }
-      // `to` is an inclusive end-of-day bound; order_date carries a time
-      // component, so compare against the date prefix only.
+      // `to` is inclusive end-of-day, and order_date has a time on it, so compare just the date part
       if (filters.to && r.order_date && String(r.order_date).slice(0, 10) > filters.to) {
         return false;
       }

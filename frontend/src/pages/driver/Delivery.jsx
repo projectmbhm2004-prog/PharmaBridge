@@ -27,7 +27,7 @@ const STEPS = [
   "Confirm",
 ];
 
-// Map a persisted order status to the wizard step the driver should resume on.
+// given a saved order status, work out which wizard step the driver should pick back up on
 const STATUS_TO_STEP = {
   accepted: 1,
   picked_up: 2,
@@ -44,14 +44,14 @@ export default function Delivery() {
   const [step, setStep] = useState(1);
   const [advancing, setAdvancing] = useState(false);
 
-  // Step 4 state
+  // state for step 4 (returns)
   const [noReturns, setNoReturns] = useState(true);
   const [rows, setRows] = useState([]); // { order_item_id, quantity_rejected, rejection_reason }
 
-  // Step 5 state
+  // state for step 5 (payment)
   const [paidAmount, setPaidAmount] = useState("");
 
-  // Step 6 state
+  // state for step 6 (confirm)
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -89,7 +89,7 @@ export default function Delivery() {
 
   const items = useMemo(() => order?.items ?? [], [order]);
 
-  // Order total after client-side return deductions.
+  // order total once we subtract whatever's being returned, computed on the client for the preview
   const deduction = useMemo(() => {
     if (noReturns) return 0;
     return rows.reduce((sum, r) => {
@@ -106,7 +106,7 @@ export default function Delivery() {
   const paid = Number(paidAmount) || 0;
   const remainingDebt = Math.max(0, totalDue - paid);
 
-  /** PATCH the order status, then advance the wizard. */
+  // PATCH the order status and then step the wizard forward
   async function advanceStatus(status, nextStep) {
     setAdvancing(true);
     try {
@@ -135,7 +135,7 @@ export default function Delivery() {
     setRows((r) => r.filter((_, idx) => idx !== i));
   }
 
-  /** Validate step 4 and continue to payment. */
+  // check step 4 looks right, then move on to payment
   function continueFromReturns() {
     if (!noReturns) {
       if (rows.length === 0) {
@@ -170,7 +170,7 @@ export default function Delivery() {
     setStep(5);
   }
 
-  /** Final delivery submission. */
+  // the actual submit that finalizes the delivery
   async function confirmDelivery() {
     const rejected_items = noReturns
       ? []
@@ -287,9 +287,7 @@ export default function Delivery() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Progress bar                                                        */
-/* ------------------------------------------------------------------ */
+// the step progress bar up top
 
 function ProgressBar({ step }) {
   return (
@@ -349,9 +347,7 @@ function ProgressBar({ step }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Order summary card                                                  */
-/* ------------------------------------------------------------------ */
+// order summary card shown on every step
 
 function OrderSummary({ order, itemCount }) {
   return (
@@ -381,9 +377,7 @@ function OrderSummary({ order, itemCount }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Reusable step header + primary button                               */
-/* ------------------------------------------------------------------ */
+// shared step header + the main action button, reused by every step
 
 function StepHeader({ icon: Icon, title, description }) {
   return (
@@ -411,9 +405,7 @@ function PrimaryButton({ children, onClick, busy, disabled }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 1 — Pickup                                                     */
-/* ------------------------------------------------------------------ */
+// step 1 - pickup from the warehouse
 
 function StepPickup({ items, busy, onConfirm }) {
   return (
@@ -453,9 +445,7 @@ function StepPickup({ items, busy, onConfirm }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 2 — On the Way                                                 */
-/* ------------------------------------------------------------------ */
+// step 2 - on the way
 
 function StepOnTheWay({ address, busy, onConfirm }) {
   return (
@@ -481,9 +471,7 @@ function StepOnTheWay({ address, busy, onConfirm }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 3 — Arrived                                                    */
-/* ------------------------------------------------------------------ */
+// step 3 - arrived at the pharmacy
 
 function StepArrived({ busy, onConfirm }) {
   return (
@@ -496,9 +484,7 @@ function StepArrived({ busy, onConfirm }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 4 — Returns                                                    */
-/* ------------------------------------------------------------------ */
+// step 4 - returns (pharmacy refuses some items)
 
 function StepReturns({
   items,
@@ -615,9 +601,7 @@ function StepReturns({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 5 — Payment                                                    */
-/* ------------------------------------------------------------------ */
+// step 5 - payment / collecting cash
 
 function StepPayment({
   currentTotal,
@@ -630,12 +614,12 @@ function StepPayment({
   onBack,
   onContinue,
 }) {
-  // Set when the driver tries to enter more than totalDue; the input is then
-  // capped at totalDue (the driver cannot overpay). Cleared on the next valid edit.
+  // flips on when they try to type more than totalDue - we cap the input at totalDue (no overpay)
+  // and clear this on the next valid edit
   const [exceeded, setExceeded] = useState(false);
 
-  // The pharmacy already overpaid on previous orders, so nothing is collectible
-  // here. Lock the input to 0 and default the collected amount to 0.
+  // pharmacy's already in credit from past overpayments, so there's nothing to collect -
+  // lock the input at 0 and default the collected amount to 0
   const hasCredit = totalDue <= 0;
 
   useEffect(() => {
@@ -655,7 +639,7 @@ function StepPayment({
     const num = Number(raw);
     if (Number.isNaN(num)) return;
     if (num > totalDue) {
-      // cap at totalDue — driver cannot collect more than what is owed
+      // cap it at totalDue, they can't collect more than what's actually owed
       setExceeded(true);
       setPaidAmount(String(totalDue));
     } else {
@@ -737,7 +721,7 @@ function StepPayment({
   );
 }
 
-/** Contextual feedback for the amount the driver entered (see scenarios 1–5). */
+// shows the right message for whatever amount the driver typed (the 5 cases below)
 function PaymentStatus({
   exceeded,
   paid,
@@ -815,9 +799,7 @@ function Row({ label, value, strong, muted }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 6 — Confirm                                                    */
-/* ------------------------------------------------------------------ */
+// step 6 - final confirm + submit
 
 function StepConfirm({
   order,

@@ -1,12 +1,7 @@
-// ============================================================
-//  PharmaBridge — Backend entry point
-// ============================================================
-// Wires together Express, the HTTP server, and Socket.io, mounts all
-// API routes, and starts listening. Real-time notifications are
-// delivered to per-user rooms (`user_${userId}`).
-// ============================================================
+// backend entry point - express + http + socket.io all get wired up here.
+// notifications go out to per-user rooms (`user_${userId}`), see the join handler below.
 
-// Load environment variables before anything else.
+// dotenv first, before anything reads process.env
 require('dotenv').config();
 
 const http = require('http');
@@ -14,13 +9,10 @@ const express = require('express');
 const cors = require('cors');
 const { Server } = require('socket.io');
 
-// Config / infrastructure
 const { initDb } = require('./config/db');
 
-// Middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
-// Routes
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const companyRoutes = require('./routes/company.routes');
@@ -29,12 +21,10 @@ const driverRoutes = require('./routes/driver.routes');
 const marketRoutes = require('./routes/market.routes');
 const notificationsRoutes = require('./routes/notifications.routes');
 
-// ------------------------------------------------------------
-// App + HTTP server + Socket.io
-// ------------------------------------------------------------
 const app = express();
 const server = http.createServer(app);
 
+// vite jumps to the next free port a lot during dev, so just whitelist a range of them
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'http://localhost:5173',
@@ -59,12 +49,9 @@ const io = new Server(server, {
   },
 });
 
-// Make io available to controllers via req.app.get('io').
+// stash io on the app so controllers can grab it with req.app.get('io')
 app.set('io', io);
 
-// ------------------------------------------------------------
-// Core middleware
-// ------------------------------------------------------------
 app.use(
   cors({
     origin: corsOrigin,
@@ -74,14 +61,10 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ------------------------------------------------------------
-// Socket.io connection handling
-// ------------------------------------------------------------
 io.on('connection', (socket) => {
   console.log(`[socket] connected: ${socket.id}`);
 
-  // Client emits 'join' with its userId after login so it receives
-  // notifications targeted at user_${userId}.
+  // client fires 'join' with its userId right after login so we can target it
   socket.on('join', (userId) => {
     if (userId === undefined || userId === null) return;
     socket.join(`user_${userId}`);
@@ -93,16 +76,11 @@ io.on('connection', (socket) => {
   });
 });
 
-// ------------------------------------------------------------
-// Health check
-// ------------------------------------------------------------
+// cheap health check, handy for uptime pings
 app.get('/health', (req, res) => {
   res.json({ success: true, message: 'Server running' });
 });
 
-// ------------------------------------------------------------
-// API routes
-// ------------------------------------------------------------
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/company', companyRoutes);
@@ -111,22 +89,18 @@ app.use('/api/driver', driverRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/notifications', notificationsRoutes);
 
-// ------------------------------------------------------------
-// 404 + error handler (must be last)
-// ------------------------------------------------------------
+// keep these last - 404 then the error handler
 app.use(notFound);
 app.use(errorHandler);
 
-// ------------------------------------------------------------
-// Start server
-// ------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
 
 async function start() {
   try {
-    // Connect to DB and run the startup migration before accepting traffic.
+    // run the migration before we take traffic
     await initDb();
   } catch (err) {
+    // still listen even if the DB is down so /health stays up and we can tell what's wrong
     console.error('[startup] database initialisation failed; continuing to listen so /health works');
   }
 

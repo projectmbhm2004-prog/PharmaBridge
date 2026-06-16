@@ -6,26 +6,16 @@ import { Calendar as CalendarIcon } from "lucide-react";
 
 import { cn, parseDateValue } from "@/lib/utils";
 
-/** Reads the page direction so the calendar + trigger mirror correctly in RTL. */
+// grabs the page dir so the calendar + trigger flip correctly under RTL
 function pageDir() {
   if (typeof document === "undefined") return "ltr";
   return document.documentElement.getAttribute("dir") === "rtl" ? "rtl" : "ltr";
 }
 
-/**
- * A single-date picker that replaces the native `<input type="date">`.
- *
- * Renders a clean trigger button (calendar icon + DD/MM/YYYY) that opens a
- * styled popover calendar. Direction-aware (LTR/RTL) and locale-aware.
- *
- * Props:
- *   value       Date | "YYYY-MM-DD" string | null — the selected date
- *   onChange    (date: Date | null) => void
- *   placeholder string shown when nothing is selected
- *   disabled    boolean
- *   className   extra classes for the trigger button
- *   locale      optional date-fns locale (e.g. `ar` for Arabic)
- */
+// our own single-date picker, replaces the native <input type="date">. trigger button shows a
+// calendar icon + DD/MM/YYYY and opens a styled popover calendar. RTL- and locale-aware.
+// props: value (Date | "YYYY-MM-DD" | null), onChange, placeholder, disabled, className, locale,
+// minDate (Date | "YYYY-MM-DD" | null) - days before it are greyed out and unselectable.
 export default function DatePicker({
   value,
   onChange,
@@ -33,10 +23,12 @@ export default function DatePicker({
   disabled = false,
   className,
   locale,
+  minDate,
   ...rest
 }) {
   const [open, setOpen] = useState(false);
   const selected = parseDateValue(value);
+  const min = parseDateValue(minDate);
   const dir = pageDir();
   const localeOpt = locale ? { locale } : undefined;
 
@@ -72,7 +64,9 @@ export default function DatePicker({
           <DayPicker
             mode="single"
             selected={selected}
-            defaultMonth={selected}
+            defaultMonth={selected || min}
+            startMonth={min}
+            disabled={min ? { before: min } : undefined}
             onSelect={(d) => {
               onChange?.(d ?? null);
               setOpen(false);

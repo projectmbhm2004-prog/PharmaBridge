@@ -1,21 +1,8 @@
-// ============================================================
-//  Email service
-// ============================================================
-// Thin wrapper around the configured Nodemailer transporter.
-// All outgoing mail goes through sendEmail().
-// ============================================================
+// thin wrapper over the nodemailer transporter - every outgoing email goes through sendEmail()
 
 const transporter = require('../config/nodemailer');
 
-/**
- * Send an HTML email.
- *
- * @param {Object} params
- * @param {string} params.to       recipient address
- * @param {string} params.subject  email subject
- * @param {string} params.html     HTML body
- * @returns {Promise<Object>} nodemailer send info
- */
+// fire off an HTML email. resolves with nodemailer's send info.
 async function sendEmail({ to, subject, html }) {
   try {
     const from = `PharmaBridge <${process.env.EMAIL_USER}>`;
@@ -29,7 +16,7 @@ async function sendEmail({ to, subject, html }) {
 
     return info;
   } catch (err) {
-    // Surface a clean message but log the real error server-side.
+    // log the real reason, rethrow so the caller decides what to tell the user
     console.error('[email] failed to send:', err.message);
     throw err;
   }

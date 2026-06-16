@@ -1,8 +1,4 @@
-/**
- * A placeholder table row with animated shimmer cells, used while data loads.
- *
- * @param {{ cols?: number }} props
- */
+// placeholder table row with shimmer cells, shown while data loads
 export default function SkeletonRow({ cols = 4 }) {
   return (
     <tr className="border-b border-border">

@@ -1,8 +1,4 @@
-// ============================================================
-//  Company routes  →  mounted at /api/company
-// ============================================================
-//  Every route requires a valid JWT (auth) + the 'company' role.
-// ============================================================
+// /api/company - all routes need a valid JWT + the 'company' role
 
 const express = require('express');
 
@@ -39,25 +35,25 @@ const {
 
 const router = express.Router();
 
-// Apply auth + company role to every route in this router.
+// company role on everything below
 router.use(auth, requireRole('company'));
 
-// Orders
+// orders
 router.get('/orders', getOrders);
 router.patch('/orders/:id/accept', acceptOrder);
 router.patch('/orders/:id/reject', rejectOrder);
 router.patch('/orders/:id/reassign', reassignDriver);
 
-// Categories (general + this company's own)
+// categories - the shared ones plus this company's own
 router.get('/categories', getCategories);
 
-// Products
+// products
 router.get('/products', getProducts);
 router.post('/products', createProduct);
 router.patch('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 
-// Product images (Cloudinary, max 4 per upload)
+// product images, up to 4 per upload (Cloudinary)
 router.post(
   '/products/:id/images',
   upload.array('images', 4),
@@ -66,21 +62,21 @@ router.post(
 );
 router.delete('/products/:id/images/:imgId', deleteProductImage);
 
-// Product packaging units (tiered pricing). The /units/:unitId routes are
-// listed before /:id so their distinct path depth is unambiguous.
+// packaging units for tiered pricing. the /units/:unitId routes go before /:id
+// so express doesn't grab "units" as the :id
 router.get('/products/:id/units', getProductUnits);
 router.post('/products/:id/units', addProductUnit);
 router.put('/products/units/:unitId', updateProductUnit);
 router.delete('/products/units/:unitId', deleteProductUnit);
 
-// Drivers
+// drivers
 router.get('/drivers', getDrivers);
 router.patch('/drivers/:id/accept', acceptDriver);
 router.patch('/drivers/:id/reject', rejectDriver);
 router.delete('/drivers/:id', fireDriver);
 router.delete('/drivers/:id/delete', deleteDriver);
 
-// Financial & marketplace
+// money + market
 router.get('/financial', getFinancial);
 router.get('/financial/pharmacy-debt/:pharmacy_id', getPharmacyDebt);
 router.post('/financial/record-payment', recordPayment);

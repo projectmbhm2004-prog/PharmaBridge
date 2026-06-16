@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, PackageOpen, X, ImagePlus, Star, Search, Package 
 import { toast } from "sonner";
 
 import api from "@/lib/api";
-import { formatCurrency, toISODate } from "@/lib/utils";
+import { formatCurrency, toISODate, parseDateValue } from "@/lib/utils";
 import DashboardLayout from "@/components/shared/DashboardLayout";
 import DatePicker from "@/components/ui/date-picker";
 
@@ -42,7 +42,7 @@ export default function Products() {
   const [productTypes, setProductTypes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters (client-side over this company's catalogue).
+  // filtering happens on the client over this company's own catalogue
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [typeId, setTypeId] = useState("");
@@ -97,7 +97,7 @@ export default function Products() {
     label: type.name,
   }));
 
-  // Apply all active filters together.
+  // run every active filter together
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return products.filter((p) => {
@@ -346,7 +346,7 @@ export default function Products() {
   );
 }
 
-/** Stock badge color thresholds: >10 green, 1-10 amber, 0 red. */
+// stock badge colors: >10 green, 1-10 amber, 0 red
 function stockBadge(qty) {
   const n = Number(qty) || 0;
   if (n === 0) return "bg-red-100 text-red-700";
@@ -453,11 +453,11 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
   );
 }
 
-/** Read-only product detail modal for the company view (no purchasing). */
+// read-only product detail modal for the company side - no buying here
 function ProductDetailModal({ product, onClose }) {
   const [active, setActive] = useState(0);
 
-  // Reset the selected gallery image whenever a different product opens.
+  // jump the gallery back to the first image whenever a different product opens
   useEffect(() => {
     setActive(0);
   }, [product]);
@@ -625,7 +625,7 @@ function ProductDetailModal({ product, onClose }) {
   );
 }
 
-/** Add/Edit side panel (Sheet). Handles product fields + image management. */
+// the add/edit side sheet - product fields plus the image management lives here
 function ProductSheet({ open, product, categories, productTypes, onClose, onSaved }) {
   const isEdit = !!product;
   const [form, setForm] = useState(EMPTY_FORM);
@@ -634,7 +634,7 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
   const [units, setUnits] = useState([]); // packaging rows
   const [saving, setSaving] = useState(false);
 
-  // Reset the form whenever the sheet opens for a (different) product.
+  // wipe the form back to defaults each time the sheet opens for a (different) product
   useEffect(() => {
     if (!open) return;
     if (product) {
@@ -667,7 +667,7 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
     setNewFiles([]);
   }, [open, product]);
 
-  // Packaging helpers ----------------------------------------------------
+  // packaging row helpers below
   function setUnit(idx, key, value) {
     setUnits((list) =>
       list.map((u, i) => (i === idx ? { ...u, [key]: value } : u))
@@ -683,7 +683,7 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
     setUnits((list) => {
       if (list.length <= 1) return list;
       const next = list.filter((_, i) => i !== idx);
-      // Guarantee exactly one default remains.
+// make sure exactly one row is still the default
       if (!next.some((u) => u.is_default)) next[0].is_default = true;
       return next;
     });
@@ -728,8 +728,14 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
       return "Quantity in stock is required.";
     if (form.has_offer && !(Number(form.offer_price) > 0))
       return "Offer price must be greater than 0.";
+    // an offer that expires today (or earlier) is already invisible - require a future date
+    if (form.has_offer && form.offer_ends_at) {
+      const ends = parseDateValue(form.offer_ends_at);
+      if (!ends || ends < tomorrow())
+        return "Offer expiry date must be in the future.";
+    }
 
-    // Packaging units (mirrors the backend rules).
+    // validate the packaging units, same rules the backend enforces
     if (units.length === 0) return "Add at least one packaging unit.";
     const seen = new Set();
     for (const u of units) {
@@ -751,7 +757,7 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
     return null;
   }
 
-  /** Map a form unit row to the API payload shape. */
+  // turn a form unit row into the shape the API wants
   function unitPayload(u) {
     return {
       unit_name: String(u.unit_name).trim(),
@@ -763,15 +769,13 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
     };
   }
 
-  /**
-   * Sync packaging units for an existing product through the dedicated
-   * endpoints: delete removed rows, update kept rows, add new rows.
-   */
+  // sync packaging for an existing product through the per-unit endpoints:
+  // delete the rows that went away, update the ones we kept, add the new ones
   async function syncUnits(productId) {
     const original = Array.isArray(product?.units) ? product.units : [];
     const currentIds = new Set(units.filter((u) => u.id).map((u) => u.id));
 
-    // Deletes first so renamed rows don't collide on the unique name.
+    // do the deletes first, otherwise a renamed row can clash with a deleted one on the unique name
     for (const o of original) {
       if (!currentIds.has(o.id)) {
         await api.delete(`/company/products/units/${o.id}`);
@@ -985,6 +989,7 @@ function ProductSheet({ open, product, categories, productTypes, onClose, onSave
                       <DatePicker
                         value={form.offer_ends_at}
                         onChange={(d) => set("offer_ends_at", toISODate(d))}
+                        minDate={tomorrow()}
                         placeholder="Pick a date"
                         className="w-full"
                       />
@@ -1211,7 +1216,16 @@ function Field({ label, required, children }) {
   );
 }
 
-/** ISO/datetime string -> "yyyy-mm-dd" for a date input (or ""). */
+// tomorrow at local midnight - the earliest an offer can validly expire (an offer ending today
+// is effectively already expired). used both as the picker's min and for submit-time validation.
+function tomorrow() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+  return d;
+}
+
+// ISO/datetime string -> "yyyy-mm-dd" for a date input (or "" if there's nothing)
 function toDateInput(str) {
   if (!str) return "";
   const d = new Date(str);
@@ -1219,7 +1233,7 @@ function toDateInput(str) {
   return d.toISOString().slice(0, 10);
 }
 
-/** A fresh default packaging row ("Single", 1 unit, no discount, default). */
+// a brand-new default packaging row: "Single", 1 unit, no discount, marked default
 function defaultUnitRow() {
   return {
     unit_name: "Single",
@@ -1230,7 +1244,7 @@ function defaultUnitRow() {
   };
 }
 
-/** Map an API unit into the editable form-row shape (nulls -> ""). */
+// turn an API unit into the editable form-row shape (nulls become "")
 function toUnitRow(u) {
   return {
     id: u.id,
@@ -1242,11 +1256,9 @@ function toUnitRow(u) {
   };
 }
 
-/**
- * Live calculated packaging price: the explicit override if set, otherwise
- * base price * units_count * (1 - discount/100). Offer pricing is not applied
- * here — the company sets the base price directly.
- */
+// live packaging price for the form preview: the explicit override if they set one, else
+// base price * units_count * (1 - discount/100). no offer pricing here - the company is
+// editing the base price directly.
 function calcUnitPrice(basePrice, row) {
   if (row.final_price !== "" && row.final_price != null) {
     return Number(row.final_price) || 0;

@@ -2,12 +2,8 @@ import { Navigate, Outlet } from "react-router-dom";
 import useAuth from "@/hooks/useAuth";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 
-/**
- * Guards a nested route subtree. Renders an <Outlet /> once the user is
- * authenticated (and, when `allowedRoles` is given, authorized).
- *
- * @param {{ allowedRoles?: string[] }} props
- */
+// gate around a chunk of routes. only renders the <Outlet /> once the user is logged in
+// (and, if allowedRoles is passed, has one of those roles).
 export default function PrivateRoute({ allowedRoles }) {
   const { token, role, isLoading } = useAuth();
 

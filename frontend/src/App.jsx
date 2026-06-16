@@ -35,13 +35,13 @@ import DriverDelivery from "@/pages/driver/Delivery";
 export default function App() {
   return (
     <Routes>
-      {/* Public */}
+      {/* public, no login needed */}
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
 
-      {/* Admin (role-scoped via PrivateRoute → Outlet) */}
+      {/* admin section - PrivateRoute checks the role then renders the Outlet */}
       <Route path="/admin" element={<PrivateRoute allowedRoles={["admin"]} />}>
         <Route index element={<Navigate to="/admin/registrations" replace />} />
         <Route path="registrations" element={<Registrations />} />
@@ -55,7 +55,7 @@ export default function App() {
         <Route path="reports" element={<Reports />} />
       </Route>
 
-      {/* Company (role-scoped via PrivateRoute → Outlet) */}
+      {/* company section */}
       <Route path="/company" element={<PrivateRoute allowedRoles={["company"]} />}>
         <Route index element={<Navigate to="/company/orders" replace />} />
         <Route path="orders" element={<CompanyOrders />} />
@@ -65,7 +65,7 @@ export default function App() {
         <Route path="market" element={<CompanyMarket />} />
       </Route>
 
-      {/* Pharmacy (role-scoped via PrivateRoute → Outlet) */}
+      {/* pharmacy section */}
       <Route path="/pharmacy" element={<PrivateRoute allowedRoles={["pharmacy"]} />}>
         <Route index element={<Navigate to="/pharmacy/market" replace />} />
         <Route path="market" element={<PharmacyMarket />} />
@@ -75,7 +75,7 @@ export default function App() {
         <Route path="financial" element={<PharmacyFinancial />} />
       </Route>
 
-      {/* Driver (role-scoped via PrivateRoute → Outlet) */}
+      {/* driver section */}
       <Route path="/driver" element={<PrivateRoute allowedRoles={["driver"]} />}>
         <Route index element={<Navigate to="/driver/orders" replace />} />
         <Route path="orders" element={<DriverOrders />} />

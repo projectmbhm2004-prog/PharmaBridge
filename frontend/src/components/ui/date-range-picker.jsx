@@ -11,7 +11,7 @@ function pageDir() {
   return document.documentElement.getAttribute("dir") === "rtl" ? "rtl" : "ltr";
 }
 
-/** Two months side-by-side on wider screens, one on phones. */
+// show two months side by side on wider screens, just one on phones
 function useMonthCount() {
   const [count, setCount] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches
@@ -27,19 +27,9 @@ function useMonthCount() {
   return count;
 }
 
-/**
- * A From → To range picker that replaces a pair of native date inputs with a
- * single trigger and one range calendar.
- *
- * Props:
- *   from        Date | "YYYY-MM-DD" string | null — range start
- *   to          Date | "YYYY-MM-DD" string | null — range end
- *   onSelect    ({ from, to }) => void  (each is Date | null)
- *   placeholder string shown when nothing is selected
- *   disabled    boolean
- *   className   extra classes for the trigger button
- *   locale      optional date-fns locale (e.g. `ar` for Arabic)
- */
+// From -> To range picker, replaces a pair of native date inputs with one trigger + one range
+// calendar. props: from/to (Date | "YYYY-MM-DD" | null), onSelect({from,to}), placeholder,
+// disabled, className, locale.
 export default function DateRangePicker({
   from,
   to,

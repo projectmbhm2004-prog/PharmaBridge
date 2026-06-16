@@ -31,7 +31,7 @@ export default function Market() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  // Fetch the company + product-type lists once for the filter dropdowns.
+  // grab the company + product-type lists once, just to populate the filter dropdowns
   useEffect(() => {
     (async () => {
       try {
@@ -51,13 +51,13 @@ export default function Market() {
     })();
   }, []);
 
-  // Reset to page 1 whenever a server-side filter changes.
+  // any filter change resets to page 1
   useEffect(() => {
     setPage(1);
   }, [search, companyId, typeId, sort]);
 
-  // Fetch products (page 1 replaces, later pages append). All filters are
-  // server-side so they apply across the whole catalogue, not just this page.
+  // load products - page 1 replaces, later pages append. filters are server-side so they
+  // cover the whole catalogue, not just the page we already have
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -98,7 +98,7 @@ export default function Market() {
     [types, typeId]
   );
 
-  // Active filter chips (removable).
+  // removable chips for whatever filters are on
   const chips = [];
   if (search.trim())
     chips.push({ key: "search", label: `"${search.trim()}"`, clear: () => setSearch("") });
@@ -267,7 +267,7 @@ export default function Market() {
   );
 }
 
-/** Read-only marketplace product card (admin view — no add to cart). */
+// market product card for the admin view - read-only, no add-to-cart
 function ProductCard({ product, index }) {
   const hasOffer = !!product.has_offer && product.offer_price != null;
 
@@ -328,7 +328,7 @@ function ProductCard({ product, index }) {
   );
 }
 
-/** Read-only 5-star display. */
+// plain read-only 5-star display
 function StarRating({ value, count }) {
   return (
     <div className="mt-2 flex items-center gap-1">

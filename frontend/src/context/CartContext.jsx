@@ -9,8 +9,8 @@ export function CartProvider({ children }) {
   const auth = useContext(AuthContext);
   const role = auth?.role;
 
-  // Multi-company cart: items are grouped by company. At checkout the backend
-  // splits the cart into one order per company.
+  // cart can hold items from several companies, grouped by company. checkout turns each
+  // group into its own order on the backend.
   const [groups, setGroups] = useState([]);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPrice, setTotalPrice] = useState(0);
@@ -39,11 +39,11 @@ export function CartProvider({ children }) {
       const { data } = await api.get("/pharmacy/cart");
       applyCart(data?.data ?? data);
     } catch {
-      // Silent — cart is non-critical to page load.
+      // swallow it - a failed cart fetch shouldn't block the page from loading
     }
   }
 
-  // Pharmacies load their cart on mount.
+  // only pharmacies have a cart, load it once when we know the role
   useEffect(() => {
     if (role === "pharmacy") {
       refreshCart();
@@ -53,10 +53,10 @@ export function CartProvider({ children }) {
 
   async function addItem(productId, qty = 1, productUnitId = null) {
     try {
-      // These cart endpoints return only { success, message } — they do NOT
-      // echo the cart back, so we must re-fetch to keep local state in sync.
+      // the cart endpoints only return { success, message }, they don't send the cart back,
+      // so we re-fetch afterwards to keep local state honest
       const payload = { product_id: productId, quantity: qty };
-      // Omit when null so the backend falls back to the default packaging.
+      // leave it off when null so the backend picks the default packaging
       if (productUnitId != null) payload.product_unit_id = productUnitId;
       await api.post("/pharmacy/cart", payload);
       await refreshCart();
@@ -85,13 +85,13 @@ export function CartProvider({ children }) {
     }
   }
 
-  // Checkout splits the cart into one order per company. Returns the created
-  // orders on success; throws on failure (e.g. 400 unavailable items) so the
-  // caller can show the backend message and keep the user on the cart page.
+  // checkout turns the cart into one order per company. hands back the created orders on success,
+  // and deliberately throws on failure (e.g. 400 unavailable items) so the caller can show the
+  // backend's message and keep them on the cart page to fix it.
   async function checkout() {
     const { data } = await api.post("/pharmacy/cart/checkout");
     const orders = data?.data?.orders ?? [];
-    await refreshCart(); // cart should now be empty
+    await refreshCart(); // should come back empty now
     return orders;
   }
 

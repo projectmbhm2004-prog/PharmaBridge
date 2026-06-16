@@ -1,26 +1,17 @@
-// ============================================================
-//  Market controller (PUBLIC — no auth)
-// ============================================================
-//  Marketplace browsing with search/filter/sort + pagination,
-//  top 5 products, active offers, product detail (images + ratings),
-//  and the accepted-company list.
-//  All handlers: try/catch -> next(err).
-// ============================================================
+// public marketplace controller, no auth. browse/search/filter/sort + paging,
+// top 5, live offers, product detail (images + ratings), and the accepted-company list.
+// every handler does try/catch -> next(err).
 
 const pool = require('../config/db');
 const { unitEffectivePrice, unitListPrice } = require('../utils/pricing');
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-
-/** Parse a positive integer with a fallback. */
+// positive int or fall back - keeps page/limit sane no matter what comes in the query string
 function toInt(value, fallback) {
   const n = parseInt(value, 10);
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-// Whitelisted sort options -> ORDER BY clause.
+// whitelist of sort options -> ORDER BY. never interpolate user input into the clause.
 const SORT_MAP = {
   newest: 'p.created_at DESC',
   price_asc: 'COALESCE(p.offer_price, p.price) ASC',
@@ -28,10 +19,6 @@ const SORT_MAP = {
   rating: 'p.rating_avg DESC',
   popular: 'p.total_orders DESC',
 };
-
-// ============================================================
-//  PRODUCTS
-// ============================================================
 
 // GET /api/market/products
 async function getProducts(req, res, next) {
@@ -49,6 +36,8 @@ async function getProducts(req, res, next) {
     const limit = toInt(req.query.limit, 20);
     const offset = (page - 1) * limit;
 
+    // only show active products from accepted companies whose login is still active -
+    // a deactivated company shouldn't have its stuff on the public market
     const conditions = [
       'p.is_active = TRUE',
       "c.registration_status = 'accepted'",
@@ -111,6 +100,7 @@ async function getProducts(req, res, next) {
       [...params, limit, offset]
     );
 
+    // flatten the subquery count into a boolean the card component can just read
     for (const p of products) {
       p.has_bulk_discount = Number(p.bulk_discount_count) > 0;
     }
@@ -127,8 +117,8 @@ async function getProducts(req, res, next) {
 // GET /api/market/products/top5
 async function getTop5(req, res, next) {
   try {
-    // Mirror of v_top5_products, but hide products from deactivated /
-    // non-accepted companies (without touching the view definition).
+    // same idea as the v_top5_products view, but we also filter out deactivated /
+    // non-accepted companies here so we don't have to touch the view
     const [products] = await pool.query(
       `SELECT p.id, p.name, p.price, p.offer_price, p.has_offer, p.offer_ends_at,
               p.rating_avg, p.rating_count, p.total_orders,
@@ -152,8 +142,7 @@ async function getTop5(req, res, next) {
 // GET /api/market/products/offers
 async function getOffers(req, res, next) {
   try {
-    // Mirror of v_active_offers, but hide products from deactivated /
-    // non-accepted companies (without touching the view definition).
+    // mirrors v_active_offers, same deactivated-company filter as top5 above
     const [offers] = await pool.query(
       `SELECT p.id, p.name, p.price, p.offer_price, p.offer_ends_at,
               p.rating_avg,
@@ -207,8 +196,8 @@ async function getProductById(req, res, next) {
       [id]
     );
 
-    // Packaging units with their offer-aware effective price + undiscounted
-    // list price, smallest packaging first.
+    // packaging options, smallest first, each with its offer-aware price + the list price
+    // for the struck-through bit. price math comes from utils/pricing so it stays consistent.
     const [unitRows] = await pool.query(
       `SELECT id, unit_name, units_count, discount_percent, final_price, is_default
          FROM product_units
@@ -240,10 +229,6 @@ async function getProductById(req, res, next) {
     return next(err);
   }
 }
-
-// ============================================================
-//  COMPANIES
-// ============================================================
 
 // GET /api/market/companies
 async function getCompanies(req, res, next) {

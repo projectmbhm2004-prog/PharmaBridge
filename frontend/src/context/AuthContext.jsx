@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(() => localStorage.getItem("role"));
   const [isLoading, setIsLoading] = useState(true);
 
-  // On mount: if we have a token, hydrate the current user from the API.
+  // on mount, if there's a token sitting in storage, go fetch the user behind it
   useEffect(() => {
     const stored = localStorage.getItem("token");
     if (!stored) {

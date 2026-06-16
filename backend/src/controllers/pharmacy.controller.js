@@ -1,28 +1,13 @@
-// ============================================================
-//  Pharmacy controller
-// ============================================================
-//  Cart management, checkout (multi-company cart split into one
-//  order per company), order
-//  tracking, financial record, and product/driver ratings.
-//  All handlers: try/catch -> next(err); multi-table writes use
-//  transactions; socket/email are non-blocking.
-// ============================================================
+// pharmacy controller - cart, checkout (a mixed-company cart becomes one order per company),
+// order tracking, the financial view, and product/driver ratings. writes that span tables run
+// in transactions, socket/email stuff is fire-and-forget.
 
 const pool = require('../config/db');
 const { emitToUser } = require('../services/socket.service');
 const { AppError } = require('../middleware/errorHandler');
 const { effectivePrice, unitEffectivePrice } = require('../utils/pricing');
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-
-/**
- * Load the pharmacy row owned by the given user.
- * @param {number} userId
- * @returns {Promise<object>} pharmacy row
- * @throws {AppError} 404 when the user has no pharmacy profile
- */
+// grab the pharmacy row for this user, 404 if they somehow have no profile
 async function getPharmacy(userId) {
   const [rows] = await pool.query(
     'SELECT * FROM pharmacies WHERE user_id = ? LIMIT 1',
@@ -34,7 +19,7 @@ async function getPharmacy(userId) {
   return rows[0];
 }
 
-/** Non-fatal socket emit. */
+// wrap emit so a socket hiccup never breaks the request
 function emitSafe(app, userId, event, data) {
   try {
     emitToUser(app, userId, event, data);
@@ -43,18 +28,15 @@ function emitSafe(app, userId, event, data) {
   }
 }
 
-/** Parse a positive integer with a fallback. */
+// positive int or fallback, for page/limit
 function toInt(value, fallback) {
   const n = parseInt(value, 10);
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-/**
- * Resolve the packaging unit for a cart/checkout line.
- *  - If unitId is given it must belong to the product (else null -> caller 400).
- *  - If omitted, falls back to the product's default unit, else the smallest.
- * Returns the product_units row or null.
- */
+// figure out which packaging unit a cart/checkout line means.
+// if they passed a unitId it has to belong to the product (else null -> caller returns 400).
+// if they didn't, fall back to the product's default unit, or the smallest one.
 async function resolveProductUnit(productId, unitId, conn) {
   const db = conn || pool;
   if (unitId !== undefined && unitId !== null && unitId !== '') {
@@ -73,10 +55,6 @@ async function resolveProductUnit(productId, unitId, conn) {
   );
   return rows.length ? rows[0] : null;
 }
-
-// ============================================================
-//  CART
-// ============================================================
 
 // GET /api/pharmacy/cart
 async function getCart(req, res, next) {
@@ -100,17 +78,16 @@ async function getCart(req, res, next) {
       [pharmacy.id]
     );
 
-    // Group items by company. Each group carries its own subtotal so the
-    // frontend can render one section (and one resulting order) per company.
-    // quantity is the number of PACKAGES; stock is tracked in BASE units, so
-    // the per-line max is floor(stock / units_count).
+    // bucket the items by company, each bucket gets its own subtotal so the frontend can
+    // show one section per company (and it'll turn into one order per company at checkout).
+    // quantity is in PACKAGES but stock is in BASE units, so the line max is floor(stock / units_count).
     let totalItems = 0;
     let totalPrice = 0;
     const groupMap = new Map();
 
     for (const item of items) {
       const unitsCount = Number(item.units_count) || 1;
-      // Per-package price (offer + packaging discount / override aware).
+      // price per package, taking the offer and the packaging discount/override into account
       const unitPrice = item.unit_name
         ? unitEffectivePrice(item, item)
         : effectivePrice(item);
@@ -177,23 +154,21 @@ async function addToCart(req, res, next) {
       ? Number(req.body.quantity)
       : 1;
 
-    // 2. product_id present
     if (!product_id) {
       return res
         .status(400)
         .json({ success: false, message: 'product_id is required' });
     }
 
-    // 3. quantity >= 1 (number of packages)
+    // quantity is the number of packages, has to be a whole number >= 1
     if (!Number.isInteger(quantity) || quantity < 1) {
       return res
         .status(400)
         .json({ success: false, message: 'quantity must be at least 1' });
     }
 
-    // 4. product exists and active, AND its company is still accepted + active.
-    //    Mirrors the marketplace visibility rules so a pharmacy can't add an
-    //    item belonging to a deactivated / un-accepted company by id.
+    // product has to exist + be active, and its company still accepted + active. same rules as the
+    // market listing, otherwise someone could add a hidden company's product straight by id
     const [products] = await pool.query(
       `SELECT p.*
          FROM products p
@@ -212,7 +187,7 @@ async function addToCart(req, res, next) {
     }
     const product = products[0];
 
-    // 5. resolve the selected packaging unit (or fall back to default/smallest)
+    // pin down which packaging they meant (or default to the smallest)
     const unit = await resolveProductUnit(product_id, product_unit_id);
     if (!unit) {
       return res
@@ -220,7 +195,7 @@ async function addToCart(req, res, next) {
         .json({ success: false, message: 'Invalid packaging unit for this product' });
     }
 
-    // 6. stock check — quantity is packages, stock is base units.
+    // stock check - packages * units_count gives base units, which is what stock is in
     const baseUnitsNeeded = quantity * (Number(unit.units_count) || 1);
     if (product.quantity_in_stock < baseUnitsNeeded) {
       return res
@@ -228,12 +203,9 @@ async function addToCart(req, res, next) {
         .json({ success: false, message: 'Insufficient stock' });
     }
 
-    // 7. upsert keyed on (pharmacy, product, packaging)
-    //    Multi-company cart: products from any company may coexist. They are
-    //    split into one order per company at checkout. The same product may
-    //    appear on several lines as long as the packaging differs — adding the
-    //    SAME product + SAME packaging merges by incrementing the existing line;
-    //    a DIFFERENT packaging creates a new line.
+    // upsert keyed on (pharmacy, product, packaging). the cart can hold stuff from any company
+    // at once - we split it per company at checkout. same product + same packaging just bumps the
+    // existing line's qty, same product + different packaging is a separate line.
     const [existing] = await pool.query(
       `SELECT id, quantity FROM cart_items
         WHERE pharmacy_id = ? AND product_id = ? AND product_unit_id = ?
@@ -242,7 +214,7 @@ async function addToCart(req, res, next) {
     );
     if (existing.length > 0) {
       const newQuantity = existing[0].quantity + quantity;
-      // Re-validate stock against the merged total (base units = packages * units_count).
+      // re-check stock against the merged quantity, not just what they're adding now
       if (product.quantity_in_stock < newQuantity * (Number(unit.units_count) || 1)) {
         return res
           .status(400)
@@ -273,14 +245,13 @@ async function updateCartItem(req, res, next) {
     const { id } = req.params;
     const quantity = req.body ? Number(req.body.quantity) : NaN;
 
-    // 2. quantity >= 1
     if (!Number.isInteger(quantity) || quantity < 1) {
       return res
         .status(400)
         .json({ success: false, message: 'quantity must be at least 1' });
     }
 
-    // 3. cart item belongs to pharmacy
+    // make sure this cart row is actually theirs
     const [items] = await pool.query(
       'SELECT * FROM cart_items WHERE id = ? AND pharmacy_id = ? LIMIT 1',
       [id, pharmacy.id]
@@ -291,8 +262,7 @@ async function updateCartItem(req, res, next) {
         .json({ success: false, message: 'Cart item not found' });
     }
 
-    // 4. stock check for new quantity (quantity is packages; stock is base
-    //    units, so scale by the selected packaging's units_count).
+    // check the new quantity fits in stock - again packages * units_count = base units
     const [products] = await pool.query(
       'SELECT quantity_in_stock FROM products WHERE id = ? LIMIT 1',
       [items[0].product_id]
@@ -314,7 +284,6 @@ async function updateCartItem(req, res, next) {
         .json({ success: false, message: 'Insufficient stock' });
     }
 
-    // 5. update
     await pool.query('UPDATE cart_items SET quantity = ? WHERE id = ?', [
       quantity,
       id,
@@ -357,12 +326,10 @@ async function checkout(req, res, next) {
     const pharmacy = await getPharmacy(req.user.userId);
     const { notes } = req.body || {};
 
-    // 2. cart items with product + company status info. We re-read product and
-    //    company state here (not just at add-to-cart time) because a product can
-    //    be deactivated, or its company deactivated / un-accepted, while the
-    //    item is already sitting in the cart. Without this an order could be
-    //    placed against a product/company that is no longer available — leaving
-    //    a pending order the company can never see or act on.
+    // pull the cart rows along with current product + company status. we re-read this here, not
+    // just at add-to-cart time, because a product (or its whole company) can get deactivated while
+    // it's sitting in the cart. skip this and you could place an order against a dead product/company
+    // - a pending order nobody can ever see or act on.
     const [cartItems] = await pool.query(
       `SELECT ci.*, p.price, p.offer_price, p.has_offer, p.offer_ends_at,
               p.company_id, p.quantity_in_stock, p.name AS product_name,
@@ -380,19 +347,16 @@ async function checkout(req, res, next) {
       [pharmacy.id]
     );
 
-    // 3. empty?
     if (cartItems.length === 0) {
       return res
         .status(400)
         .json({ success: false, message: 'Your cart is empty' });
     }
 
-    // 4. Re-validate every item up front. If ANY item is unavailable we abort
-    //    the whole checkout (no partial orders) and report exactly which
-    //    products are blocking it, so the pharmacy can fix its cart.
-    //    The same product can now appear on multiple lines (different packaging)
-    //    that all draw from one stock pool, so the stock check is per PRODUCT
-    //    and sums base units (packages * units_count) across every line.
+    // validate everything up front. if even one item is unavailable we bail on the whole
+    // checkout (no half orders) and tell them exactly which products are the problem.
+    // a product can sit on several lines now (different packaging) all sharing one stock pool,
+    // so the stock check is per PRODUCT, summing base units across every line for it.
     const neededByProduct = new Map();
     for (const item of cartItems) {
       const baseNeeded = item.quantity * (Number(item.units_count) || 1);
@@ -423,7 +387,7 @@ async function checkout(req, res, next) {
       });
     }
 
-    // 5. group items by company — one order per company
+    // split the cart into one group per company - each becomes its own order
     const groupMap = new Map();
     for (const item of cartItems) {
       let group = groupMap.get(item.company_id);
@@ -432,12 +396,12 @@ async function checkout(req, res, next) {
         groupMap.set(item.company_id, group);
       }
       group.items.push(item);
-      // Per-package price honours the packaging discount/override AND the offer.
+      // per-package price, offer + packaging discount/override baked in
       group.total += unitEffectivePrice(item, item) * item.quantity;
     }
     const groups = Array.from(groupMap.values());
 
-    // 6. single transaction across all company groups — all or nothing
+    // one transaction wrapping every company's order - all of them commit or none do
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
@@ -452,15 +416,12 @@ async function checkout(req, res, next) {
       );
       const orderId = orderResult.insertId;
 
-      // Lock + re-validate stock under the transaction, once per distinct
-      // product, summing base units across all of this product's lines (a
-      // product may appear on multiple lines with different packaging). Stock is
-      // DECREMENTED here, at checkout (order creation), not when the company
-      // accepts. Reserving stock the moment an order is placed prevents oversell
-      // when several pharmacies order the same product before the company has
-      // had a chance to review its pending orders. Stock is restored if the
-      // order is later rejected / cancelled (see company.rejectOrder and the
-      // admin company-deactivation auto-reject).
+      // lock and re-check stock inside the transaction, once per distinct product, summing base
+      // units across all its lines (same product can appear with different packaging). important:
+      // we decrement stock HERE at checkout, not when the company accepts. reserving the moment the
+      // order is placed is what stops oversell when several pharmacies grab the same product before
+      // the company has even looked at its pending orders. stock comes back if the order is later
+      // rejected/cancelled (see company.rejectOrder and the admin deactivation auto-reject).
       const groupNeed = new Map();
       for (const item of group.items) {
         const baseNeeded = item.quantity * (Number(item.units_count) || 1);
@@ -485,8 +446,8 @@ async function checkout(req, res, next) {
             400
           );
         }
-        // Reserve the stock immediately. The row is locked (FOR UPDATE above)
-        // until this transaction commits, so concurrent checkouts can't oversell.
+        // take the stock now. the row's locked from the FOR UPDATE above until we commit,
+        // so two checkouts racing on the same product can't both succeed past stock
         await conn.query(
           'UPDATE products SET quantity_in_stock = quantity_in_stock - ? WHERE id = ?',
           [baseNeeded, productId]
@@ -494,9 +455,8 @@ async function checkout(req, res, next) {
       }
 
       for (const item of group.items) {
-        // quantity_ordered = number of packages; unit_price = price per package
-        // (offer + packaging discount applied). product_unit_id records which
-        // packaging was bought so the accept-time stock decrement is correct.
+        // quantity_ordered is packages, unit_price is the per-package price with offer + discount.
+        // we stash product_unit_id too so later steps know the base-unit conversion for this line.
         await conn.query(
           `INSERT INTO order_items
              (order_id, product_id, quantity_ordered, unit_price, product_unit_id)
@@ -513,7 +473,7 @@ async function checkout(req, res, next) {
       });
     }
 
-    // 7. clear the cart only after every order is in place
+    // only wipe the cart once all the orders are safely in
     await conn.query('DELETE FROM cart_items WHERE pharmacy_id = ?', [
       pharmacy.id,
     ]);
@@ -522,7 +482,7 @@ async function checkout(req, res, next) {
     conn.release();
     conn = null;
 
-    // 8. notify each company (non-blocking)
+    // ping each company about their new order, best-effort
     for (const order of createdOrders) {
       try {
         const [companies] = await pool.query(
@@ -564,10 +524,6 @@ async function checkout(req, res, next) {
     return next(err);
   }
 }
-
-// ============================================================
-//  ORDERS
-// ============================================================
 
 // GET /api/pharmacy/orders
 async function getOrders(req, res, next) {
@@ -688,10 +644,6 @@ async function getOrderDetail(req, res, next) {
   }
 }
 
-// ============================================================
-//  FINANCIAL
-// ============================================================
-
 // GET /api/pharmacy/financial
 async function getFinancial(req, res, next) {
   try {
@@ -721,24 +673,19 @@ async function getFinancial(req, res, next) {
   }
 }
 
-// ============================================================
-//  RATINGS
-// ============================================================
-
 // POST /api/pharmacy/ratings
 async function createRating(req, res, next) {
   try {
     const pharmacy = await getPharmacy(req.user.userId);
     const { order_id, product_id, driver_id, stars } = req.body || {};
 
-    // 2. required
     if (!order_id || stars === undefined || stars === null) {
       return res
         .status(400)
         .json({ success: false, message: 'order_id and stars are required' });
     }
 
-    // 3. stars 1..5 integer
+    // stars has to be a whole 1-5
     const starsNum = Number(stars);
     if (!Number.isInteger(starsNum) || starsNum < 1 || starsNum > 5) {
       return res.status(400).json({
@@ -747,7 +694,7 @@ async function createRating(req, res, next) {
       });
     }
 
-    // 4. exactly one target
+    // rate exactly one thing - a product OR a driver, not both, not neither
     const hasProduct = product_id !== undefined && product_id !== null;
     const hasDriver = driver_id !== undefined && driver_id !== null;
     if (hasProduct === hasDriver) {
@@ -757,7 +704,7 @@ async function createRating(req, res, next) {
       });
     }
 
-    // 5. order belongs to pharmacy
+    // the order has to be theirs
     const [orders] = await pool.query(
       'SELECT * FROM orders WHERE id = ? AND pharmacy_id = ? LIMIT 1',
       [order_id, pharmacy.id]
@@ -769,7 +716,7 @@ async function createRating(req, res, next) {
     }
     const order = orders[0];
 
-    // 6. delivered / partially_delivered only
+    // and it has to actually be delivered before they can rate it
     if (!['delivered', 'partially_delivered'].includes(order.status)) {
       return res.status(403).json({
         success: false,
@@ -777,7 +724,7 @@ async function createRating(req, res, next) {
       });
     }
 
-    // 7. product belongs to order
+    // can't rate a product that wasn't in this order
     if (hasProduct) {
       const [oi] = await pool.query(
         'SELECT id FROM order_items WHERE order_id = ? AND product_id = ? LIMIT 1',
@@ -791,7 +738,7 @@ async function createRating(req, res, next) {
       }
     }
 
-    // 8. driver assigned to order
+    // ...or a driver who wasn't the one on this order
     if (hasDriver) {
       if (order.driver_id === null || Number(order.driver_id) !== Number(driver_id)) {
         return res.status(400).json({
@@ -801,7 +748,7 @@ async function createRating(req, res, next) {
       }
     }
 
-    // 9. insert (triggers update rating_avg automatically)
+    // insert it - the DB trigger recomputes rating_avg/rating_count for us
     try {
       await pool.query(
         `INSERT INTO ratings (pharmacy_id, order_id, product_id, driver_id, stars)
@@ -815,6 +762,7 @@ async function createRating(req, res, next) {
         ]
       );
     } catch (dbErr) {
+      // the unique key on (pharmacy, order, target) blocks a second rating - turn that into a clean 409
       if (dbErr.code === 'ER_DUP_ENTRY') {
         return res.status(409).json({
           success: false,

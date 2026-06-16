@@ -10,7 +10,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-/* Brand social icons (SVG paths from each platform). */
+// social icons, just the raw SVG paths from each platform
 function WhatsAppIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -44,7 +44,7 @@ function XIcon() {
   );
 }
 
-/** Brand mark: green rounded square with "PB" + wordmark. */
+// logo - green rounded square with "PB" next to the wordmark
 function Logo({ light = false }) {
   return (
     <span className="flex items-center gap-2">
@@ -141,7 +141,7 @@ const SOCIALS = [
 export default function Landing() {
   return (
     <div className="min-h-screen bg-white">
-      {/* NAVBAR */}
+      {/* top nav */}
       <header className="sticky top-0 z-50 bg-white shadow-sm">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
           <Logo />
@@ -162,7 +162,7 @@ export default function Landing() {
         </nav>
       </header>
 
-      {/* HERO */}
+      {/* hero */}
       <section
         className="relative bg-gradient-to-br from-[#166534] to-[#14532d]"
         style={{
@@ -207,7 +207,7 @@ export default function Landing() {
         </motion.div>
       </section>
 
-      {/* FEATURES */}
+      {/* features */}
       <section className="bg-white py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <h2 className="text-center text-3xl font-bold tracking-tight text-text-primary">
@@ -247,14 +247,14 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
+      {/* how it works */}
       <section className="bg-[#f0fdf4] py-20">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <h2 className="text-center text-3xl font-bold tracking-tight text-text-primary">
             How PharmaBridge works
           </h2>
           <div className="relative mt-14 grid grid-cols-1 gap-12 md:grid-cols-3 md:gap-6">
-            {/* Connecting line (desktop only) */}
+            {/* the line linking the steps, desktop only */}
             <div className="absolute left-0 right-0 top-7 hidden h-0.5 bg-green-200 md:block" />
             {STEPS.map(({ title, text }, i) => (
               <div
@@ -276,7 +276,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ROLES */}
+      {/* roles */}
       <section className="bg-white py-20">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <h2 className="text-center text-3xl font-bold tracking-tight text-text-primary">
@@ -301,7 +301,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* CONTACT */}
+      {/* contact */}
       <section className="bg-[#166534] py-20">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
           <h2 className="text-3xl font-bold tracking-tight text-white">
@@ -325,7 +325,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* footer */}
       <footer className="bg-[#14532d] py-10">
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 px-4 text-center sm:px-6">
           <Logo light />

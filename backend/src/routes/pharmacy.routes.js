@@ -1,8 +1,4 @@
-// ============================================================
-//  Pharmacy routes  →  mounted at /api/pharmacy
-// ============================================================
-//  Every route requires a valid JWT (auth) + the 'pharmacy' role.
-// ============================================================
+// /api/pharmacy - all routes need a valid JWT + the 'pharmacy' role
 
 const express = require('express');
 
@@ -22,24 +18,24 @@ const {
 
 const router = express.Router();
 
-// Apply auth + pharmacy role to every route in this router.
+// pharmacy role on everything below
 router.use(auth, requireRole('pharmacy'));
 
-// Cart
+// cart
 router.get('/cart', getCart);
 router.post('/cart', addToCart);
 router.patch('/cart/:id', updateCartItem);
 router.delete('/cart/:id', removeCartItem);
 router.post('/cart/checkout', checkout);
 
-// Orders
+// orders
 router.get('/orders', getOrders);
 router.get('/orders/:id', getOrderDetail);
 
-// Financial
+// money
 router.get('/financial', getFinancial);
 
-// Ratings
+// ratings
 router.post('/ratings', createRating);
 
 module.exports = router;

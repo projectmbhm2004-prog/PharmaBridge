@@ -1,17 +1,14 @@
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-/** Merge conditional class names (used by shadcn/ui components). */
+// the usual clsx + tailwind-merge combo the shadcn components want
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-/**
- * Coerce a Date | "YYYY-MM-DD" string | null into a local Date for the
- * calendar. Bare date strings are parsed as *local* midnight (not UTC) so
- * the selected day never shifts across time zones. Returns undefined when
- * there is nothing to select.
- */
+// turn a Date / "YYYY-MM-DD" string / null into a local Date for the calendar.
+// parse bare date strings as LOCAL midnight, not UTC - otherwise the picked day jumps a
+// day in some timezones. undefined when there's nothing to select.
 export function parseDateValue(value) {
   if (!value) return undefined;
   if (value instanceof Date) return isNaN(value) ? undefined : value;
@@ -24,11 +21,8 @@ export function parseDateValue(value) {
   return undefined;
 }
 
-/**
- * Format a Date as a "YYYY-MM-DD" string using local calendar fields — the
- * exact shape the old `<input type="date">` produced, so query params and
- * filter state stay byte-for-byte compatible. Null/invalid → "".
- */
+// Date -> "YYYY-MM-DD" using local fields. has to match exactly what the old
+// <input type="date"> produced so the query params / filter state stay identical. ""  on null/invalid.
 export function toISODate(date) {
   if (!date) return "";
   const d = date instanceof Date ? date : parseDateValue(date);
@@ -37,7 +31,7 @@ export function toISODate(date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** "1,234.00 SAR" */
+// money, e.g. "1,234.00 SAR"
 export function formatCurrency(amount) {
   const value = Number(amount) || 0;
   return `${value.toLocaleString("en-US", {
@@ -46,7 +40,7 @@ export function formatCurrency(amount) {
   })} SAR`;
 }
 
-/** "Jun 5, 2026" */
+// date only, e.g. "Jun 5, 2026"
 export function formatDate(str) {
   if (!str) return "";
   const date = new Date(str);
@@ -58,7 +52,7 @@ export function formatDate(str) {
   });
 }
 
-/** "Jun 5, 2026 · 3:45 PM" */
+// date + time, e.g. "Jun 5, 2026 · 3:45 PM"
 export function formatDateTime(str) {
   if (!str) return "";
   const date = new Date(str);
@@ -76,7 +70,7 @@ export function formatDateTime(str) {
   return `${datePart} · ${timePart}`;
 }
 
-/** "2 hours ago" */
+// relative time, e.g. "2 hours ago"
 export function timeAgo(str) {
   if (!str) return "";
   const date = new Date(str);
@@ -104,7 +98,7 @@ export function timeAgo(str) {
   return "just now";
 }
 
-/** Tailwind badge classes for an order status. */
+// badge colors per order status
 export function getStatusColor(status) {
   const map = {
     pending: "bg-amber-100 text-amber-700",
@@ -119,7 +113,7 @@ export function getStatusColor(status) {
   return map[status] || "bg-slate-100 text-slate-700";
 }
 
-/** Human-readable label for an order status. */
+// pretty label per order status
 export function getStatusLabel(status) {
   const map = {
     pending: "Pending",
@@ -134,7 +128,7 @@ export function getStatusLabel(status) {
   return map[status] || status || "";
 }
 
-/** Effective unit price, honoring an active offer. */
+// mirrors the backend: offer price when there's a live offer, otherwise the base price
 export function calculateEffectivePrice(price, offerPrice, hasOffer) {
   if (hasOffer && offerPrice != null) {
     return Number(offerPrice);

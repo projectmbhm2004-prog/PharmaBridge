@@ -1,10 +1,5 @@
-// ============================================================
-//  Notifications routes  →  mounted at /api/notifications
-// ============================================================
-//  Auth required (any role) — no requireRole restriction.
-//  NOTE: /read-all is registered BEFORE /:id/read so Express does
-//  not treat "read-all" as an :id.
-// ============================================================
+// /api/notifications - just needs auth, any role.
+// /read-all goes before /:id/read so express doesn't read "read-all" as an :id.
 
 const express = require('express');
 
@@ -17,7 +12,7 @@ const {
 
 const router = express.Router();
 
-// Authenticated users of any role.
+// any logged-in user
 router.use(auth);
 
 router.get('/', getNotifications);

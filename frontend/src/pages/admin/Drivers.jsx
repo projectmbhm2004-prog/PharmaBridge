@@ -18,7 +18,7 @@ const STATUS_OPTIONS = [
   { value: "fired", label: "Fired" },
 ];
 
-/** Bucket a driver into one of: active / pending / rejected / fired. */
+// work out which bucket a driver belongs in: active / pending / rejected / fired
 function driverState(d) {
   if (d.is_fired) return "fired";
   if (d.registration_status === "accepted") return "active";

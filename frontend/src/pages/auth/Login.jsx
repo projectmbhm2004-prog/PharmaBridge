@@ -8,7 +8,7 @@ import api from "@/lib/api";
 import useAuth from "@/hooks/useAuth";
 import ErrorMessage from "@/components/shared/ErrorMessage";
 
-/** Where each role lands after a successful login. */
+// where each role gets sent right after logging in
 const ROLE_HOME = {
   admin: "/admin/registrations",
   company: "/company/orders",
@@ -33,7 +33,7 @@ export default function Login() {
 
     try {
       const { data } = await api.post("/auth/login", { email, password });
-      // Backend responds with { success: true, data: { token, role } }.
+      // backend sends { success: true, data: { token, role } }
       const token = data?.data?.token;
       const role = data?.data?.role;
 
@@ -46,7 +46,7 @@ export default function Login() {
       login(token, role);
       navigate(ROLE_HOME[role] ?? "/", { replace: true });
     } catch (err) {
-      // Log the full error so the actual cause is visible in the console.
+      // dump the whole error so the real cause shows up in the console
       console.error("[login] request failed:", err);
       console.error("[login] response:", err.response?.status, err.response?.data);
 
@@ -57,7 +57,7 @@ export default function Login() {
       } else if (status) {
         setError("Invalid email or password.");
       } else {
-        // No response → network/CORS error or backend unreachable.
+        // no response at all = network/CORS issue or the backend is just down
         setError("Cannot reach the server. Check that the backend is running.");
         toast.error("Something went wrong. Please try again.");
       }

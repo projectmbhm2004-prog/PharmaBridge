@@ -25,8 +25,8 @@ export default function Cart() {
       toast.success(`${count} order${count === 1 ? "" : "s"} placed successfully`);
       navigate("/pharmacy/orders");
     } catch (err) {
-      // 400 with unavailable items, etc. — keep the pharmacy on the cart page
-      // so they can adjust, and show the backend's specific message.
+      // e.g. a 400 for unavailable items - keep them on the cart page to fix it and show
+      // whatever specific message the backend gave us
       toast.error(err.response?.data?.message || "Failed to place order");
     } finally {
       setPlacing(false);
@@ -77,7 +77,7 @@ export default function Cart() {
               <div className="divide-y divide-slate-100">
                 {group.items.map((item, i) => {
                   const unit = Number(item.effective_price ?? item.price) || 0;
-                  // max_quantity is the number of PACKAGES the stock allows.
+                  // max_quantity is how many PACKAGES the stock can cover
                   const maxQty =
                     item.max_quantity != null
                       ? Number(item.max_quantity)

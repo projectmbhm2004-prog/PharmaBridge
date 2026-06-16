@@ -31,11 +31,10 @@ export default function Financial() {
   const [summary, setSummary] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Pharmacy targeted by the "Record Payment" modal (null = closed).
+  // which pharmacy the "Record Payment" modal is open for (null = modal closed)
   const [payTarget, setPayTarget] = useState(null);
 
-  // Pharmacy dropdown is built once from the unfiltered result set so it
-  // doesn't shrink as the user narrows the records.
+  // build the pharmacy dropdown once from the unfiltered set so it doesn't shrink as they filter
   const pharmaciesRef = useRef([]);
   const [pharmacies, setPharmacies] = useState([]);
 
@@ -53,7 +52,7 @@ export default function Financial() {
       setRecords(recs);
       setSummary(data?.data?.summary ?? []);
 
-      // Seed the pharmacy filter list the first time (no filters applied).
+      // first load (no filters yet) is where we seed the pharmacy filter list
       if (pharmaciesRef.current.length === 0) {
         const map = new Map();
         for (const r of recs) {
@@ -61,7 +60,7 @@ export default function Financial() {
             map.set(r.pharmacy_id, r.pharmacy_name);
           }
         }
-        // Prefer the summary view if present — it lists every pharmacy.
+        // the summary view lists every pharmacy, so pull from it too where we can
         for (const s of data?.data?.summary ?? []) {
           if (s.pharmacy_id && !map.has(s.pharmacy_id)) {
             map.set(s.pharmacy_id, s.pharmacy_name);
@@ -87,7 +86,7 @@ export default function Financial() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  // Totals across all pharmacies (summary = v_pharmacy_debts rows).
+  // totals across every pharmacy (summary is the v_pharmacy_debts rows)
   const totals = summary.reduce(
     (acc, s) => ({
       billed: acc.billed + (Number(s.total_billed) || 0),
@@ -97,7 +96,7 @@ export default function Financial() {
     { billed: 0, paid: 0, debt: 0 }
   );
 
-  // Pharmacies that still owe money — eligible for a manual payment record.
+  // only pharmacies still in the red can have a manual payment recorded against them
   const debtors = summary.filter((s) => Number(s.total_debt) > 0);
 
   const hasFilters =
@@ -363,11 +362,9 @@ function SummaryCard({ icon: Icon, label, value, tone }) {
   );
 }
 
-/**
- * Modal to record a standalone debt payment (no new order). The outstanding
- * balance is re-fetched on open so the cap reflects the latest state, then the
- * amount is capped client-side and again server-side.
- */
+// modal for recording a one-off debt payment that isn't tied to a new order. we re-fetch the
+// outstanding balance when it opens so the cap is current, then cap the amount both here and on
+// the server.
 function RecordPaymentModal({ target, onClose, onRecorded }) {
   const [debt, setDebt] = useState(target.debt);
   const [loadingDebt, setLoadingDebt] = useState(true);
@@ -384,7 +381,7 @@ function RecordPaymentModal({ target, onClose, onRecorded }) {
         );
         if (active) setDebt(Number(data?.data?.total_debt) || 0);
       } catch {
-        // Fall back to the summary value already in `debt`.
+        // if that fails just keep the summary value we already have in `debt`
       } finally {
         if (active) setLoadingDebt(false);
       }

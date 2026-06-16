@@ -1,22 +1,13 @@
-// ============================================================
-//  File upload middleware — Multer (memory storage)
-// ============================================================
-// Files are kept in memory as Buffers so they can be streamed
-// straight to Cloudinary. Only images are accepted, max 5MB each.
-// ============================================================
+// multer with memory storage - we keep files as Buffers and stream them straight to
+// Cloudinary, so no temp files on disk. images only, 5MB cap.
 
 const multer = require('multer');
 
-// Allowed MIME types for product / profile images.
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-/**
- * Reject anything that isn't an allowed image type.
- * Passing an Error (instead of throwing) lets Multer forward it to
- * the error pipeline cleanly.
- */
+// pass an Error back instead of throwing so multer routes it into its own error pipeline cleanly
 function fileFilter(req, file, cb) {
   if (ALLOWED_MIME.includes(file.mimetype)) {
     return cb(null, true);
@@ -32,12 +23,8 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE },
 });
 
-/**
- * Express error middleware that turns Multer errors into the uniform
- * 400 JSON response. Mount this right after the upload middleware on
- * routes that accept files, or rely on the global handler picking up
- * the statusCode we set below.
- */
+// turns multer's errors into our standard 400 json shape. drop this right after the upload
+// middleware on file routes, or just let the global handler catch the statusCode we set.
 function handleUploadError(err, req, res, next) {
   if (err instanceof multer.MulterError) {
     let message = 'File upload error';
@@ -49,7 +36,7 @@ function handleUploadError(err, req, res, next) {
     return res.status(400).json({ success: false, message });
   }
 
-  // Custom file-filter rejection.
+  // this is the reject from fileFilter above
   if (err && err.statusCode === 400) {
     return res.status(400).json({ success: false, message: err.message });
   }

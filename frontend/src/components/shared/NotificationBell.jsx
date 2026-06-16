@@ -5,14 +5,12 @@ import api from "@/lib/api";
 import useSocket from "@/hooks/useSocket";
 import { timeAgo } from "@/lib/utils";
 
-/** Normalize a notification's read flag across possible backend shapes. */
+// little helpers to read a notification regardless of which field-name shape the backend used
 const isRead = (n) => Boolean(n.is_read ?? n.read);
-/** Normalize a notification's id. */
 const notifId = (n) => n.id ?? n.notification_id;
-/** Normalize a notification's timestamp. */
 const notifTime = (n) => n.created_at ?? n.createdAt ?? n.time;
 
-/** Bell icon with unread badge and a dropdown of recent notifications. */
+// bell icon with an unread badge + a dropdown of the recent ones
 export default function NotificationBell() {
   const socket = useSocket();
   const [items, setItems] = useState([]);
@@ -21,8 +19,7 @@ export default function NotificationBell() {
   const [bounce, setBounce] = useState(0);
   const wrapRef = useRef(null);
 
-  // Fetch the latest notifications. The API returns
-  // { data: { notifications, unread_count } }, so unwrap accordingly.
+  // grab the latest notifications. API hands back { data: { notifications, unread_count } }, unwrap it.
   async function fetchNotifications() {
     try {
       const { data } = await api.get("/notifications");
@@ -31,8 +28,7 @@ export default function NotificationBell() {
         ? payload
         : payload?.notifications ?? [];
       if (Array.isArray(list)) setItems(list);
-      // Use the backend's authoritative unread_count; fall back to a local
-      // count only when the field is absent from the response.
+      // trust the backend's unread_count, only count locally if it didn't send one
       const count = payload?.unread_count;
       setUnreadCount(
         typeof count === "number"
@@ -42,19 +38,18 @@ export default function NotificationBell() {
           : 0
       );
     } catch {
-      // Non-critical — leave the list as-is.
+      // not important enough to surface, just leave the list as it was
     }
   }
 
-  // Initial fetch.
+  // first load
   useEffect(() => {
     fetchNotifications();
   }, []);
 
-  // Live updates over the socket. The backend emits domain-specific events
-  // (order_received, order_accepted, driver_assigned, …) — never a generic
-  // "notification" event — and each one is paired with a persisted
-  // notification row. So on each of these events, re-fetch and bounce the bell.
+  // live updates over the socket. the backend never emits a generic "notification" event - it
+  // sends domain events (order_received, order_accepted, ...) each backed by a real notification
+  // row. so on any of these, just re-fetch and bounce the bell.
   useEffect(() => {
     if (!socket) return;
     const notificationEvents = [
@@ -87,7 +82,7 @@ export default function NotificationBell() {
     };
   }, [socket]);
 
-  // Close the dropdown on outside click.
+  // click anywhere outside closes the dropdown
   useEffect(() => {
     if (!open) return;
     const onClick = (e) => {
@@ -105,7 +100,7 @@ export default function NotificationBell() {
     try {
       await api.patch(`/notifications/${id}/read`);
     } catch {
-      // Best-effort; UI already reflects the change.
+      // we already updated the UI optimistically, so a failed call here is no big deal
     }
   }
 
@@ -115,7 +110,7 @@ export default function NotificationBell() {
     try {
       await api.patch("/notifications/read-all");
     } catch {
-      // Best-effort.
+      // same deal, UI's already updated
     }
   }
 

@@ -1,10 +1,6 @@
-// ============================================================
-//  Market routes  →  mounted at /api/market
-// ============================================================
-//  Fully PUBLIC marketplace — no auth middleware at all.
-//  NOTE: /products/top5 and /products/offers are registered BEFORE
-//  /products/:id so Express does not treat "top5"/"offers" as an :id.
-// ============================================================
+// /api/market - fully public, no auth at all.
+// top5 and offers are registered before /products/:id, otherwise express reads
+// "top5"/"offers" as an :id value and hits the wrong handler.
 
 const express = require('express');
 

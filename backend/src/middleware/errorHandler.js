@@ -1,21 +1,8 @@
-// ============================================================
-//  Error handling middleware
-// ============================================================
-// - AppError: small operational-error class with an HTTP status code
-// - errorHandler: final Express error middleware (uniform JSON shape)
-// - notFound: 404 handler for unmatched routes
-// ============================================================
+// our error plumbing: AppError (operational error + status code), errorHandler (the final
+// express handler, uniform json), and notFound (404 for anything that fell through).
 
-/**
- * Operational error with an attached HTTP status code.
- * Throw `new AppError('message', 400)` anywhere and it will be
- * surfaced to the client with the right status.
- */
+// throw `new AppError('message', 400)` anywhere and the handler below surfaces it with that status
 class AppError extends Error {
-  /**
-   * @param {string} message
-   * @param {number} statusCode
-   */
   constructor(message, statusCode) {
     super(message);
     this.statusCode = statusCode || 500;
@@ -24,34 +11,27 @@ class AppError extends Error {
   }
 }
 
-/**
- * 404 handler — mounted after all routes.
- * Express 5: no path means "anything that fell through".
- */
+// catch-all 404, mounted after every route. express 5 lets us skip the path here.
 function notFound(req, res, next) {
   res.status(404).json({ success: false, message: 'Route not found' });
 }
 
-/**
- * Final error middleware. Must keep the 4-argument signature so
- * Express recognises it as an error handler.
- * Always returns { success: false, message: string }.
- * Never exposes stack traces to the client.
- */
+// final error middleware. keep all 4 args or express won't treat it as an error handler.
+// always { success: false, message }, and stack traces never go to the client.
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   const statusCode = err.statusCode && Number.isInteger(err.statusCode)
     ? err.statusCode
     : 500;
 
-  // Log full error server-side (stack stays on the server only).
+  // full error stays server-side only
   if (statusCode >= 500) {
     console.error('[error]', err);
   } else {
     console.warn('[error]', err.message);
   }
 
-  // For unexpected (non-operational) 500s, hide the real message.
+  // for surprise 500s hide the real message, don't leak internals
   const message = statusCode >= 500 && !err.isOperational
     ? 'Internal server error'
     : err.message || 'Something went wrong';

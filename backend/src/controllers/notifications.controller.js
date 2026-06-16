@@ -1,10 +1,5 @@
-// ============================================================
-//  Notifications controller
-// ============================================================
-//  List the latest notifications (+ unread count), mark one read,
-//  mark all read. Available to every authenticated role.
-//  All handlers: try/catch -> next(err).
-// ============================================================
+// notifications - list the latest + unread count, mark one read, mark all read.
+// any logged-in role can hit these. every handler does try/catch -> next(err).
 
 const pool = require('../config/db');
 
@@ -56,6 +51,7 @@ async function markRead(req, res, next) {
   try {
     const { id } = req.params;
 
+    // scope by user_id too so nobody can mark someone else's notification read
     const [rows] = await pool.query(
       'SELECT id FROM notifications WHERE id = ? AND user_id = ? LIMIT 1',
       [id, req.user.userId]

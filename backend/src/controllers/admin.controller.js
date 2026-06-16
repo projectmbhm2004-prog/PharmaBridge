@@ -1,11 +1,6 @@
-// ============================================================
-//  Admin controller
-// ============================================================
-//  registration review, manual company/pharmacy creation,
-//  orders listing, marketplace view, and category management.
-//  All handlers: try/catch -> next(err); multi-table writes use
-//  transactions; email is non-blocking; socket emit is non-fatal.
-// ============================================================
+// admin controller - reviewing registrations, hand-creating companies/pharmacies, the orders
+// list, the market view, and category/type management. multi-table writes use transactions,
+// emails and socket emits are fire-and-forget.
 
 const bcrypt = require('bcrypt');
 
@@ -16,15 +11,8 @@ const { emitToUser } = require('../services/socket.service');
 const BCRYPT_ROUNDS = 12;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-
-/**
- * Validate password strength (same rules as auth/register).
- * @param {string} password
- * @returns {string|null} error message or null when valid
- */
+// same password rules as auth/register - returns an error string or null if it's fine.
+// kept a copy here so admin-created accounts get the same strength check
 function validatePassword(password) {
   if (!password || typeof password !== 'string' || password.length < 8) {
     return 'Password must be at least 8 characters long';
@@ -44,22 +32,20 @@ function validatePassword(password) {
   return null;
 }
 
-/** Fire-and-forget email; never throws into the request flow. */
+// send and forget - swallow any error so a flaky mail server can't fail the request
 function sendEmailSafe(opts) {
   sendEmail(opts).catch((err) =>
     console.error('[admin] email failed:', err.message)
   );
 }
 
-/** Parse a positive integer query param with a fallback. */
+// positive int or fallback, for page/limit
 function toInt(value, fallback) {
   const n = parseInt(value, 10);
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-// ------------------------------------------------------------
 // GET /api/admin/registrations
-// ------------------------------------------------------------
 async function getRegistrations(req, res, next) {
   try {
     const type = req.query.type || 'all';
@@ -109,16 +95,14 @@ async function getRegistrations(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // PATCH /api/admin/registrations/:id
-// ------------------------------------------------------------
 async function reviewRegistration(req, res, next) {
   let conn;
   try {
     const { id } = req.params;
     const { type, action, rejection_reason } = req.body || {};
 
-    // 1 + 2. validate inputs
+    // sanity-check the inputs
     if (type !== 'company' && type !== 'pharmacy') {
       return res
         .status(400)
@@ -132,7 +116,7 @@ async function reviewRegistration(req, res, next) {
 
     const table = type === 'company' ? 'companies' : 'pharmacies';
 
-    // 4. find record (join users for email)
+    // pull the record, join users so we have the email for the notification
     const [rows] = await pool.query(
       `SELECT t.id, t.user_id, t.name, u.email
          FROM ${table} t
@@ -151,7 +135,6 @@ async function reviewRegistration(req, res, next) {
     const isActive = action === 'accept';
     const reason = action === 'reject' ? rejection_reason || null : null;
 
-    // 5. transaction
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
@@ -166,7 +149,7 @@ async function reviewRegistration(req, res, next) {
       record.user_id,
     ]);
 
-    // 9. notification (inside tx so it's consistent with the status change)
+    // notification goes inside the tx so it can't exist without the status change (or vice versa)
     const notifType =
       action === 'accept' ? 'registration_accepted' : 'registration_rejected';
     const notifTitle =
@@ -185,7 +168,7 @@ async function reviewRegistration(req, res, next) {
     conn.release();
     conn = null;
 
-    // 7. email (non-blocking)
+    // fire the accept/decline email, best-effort
     if (action === 'accept') {
       const clientUrl =
         req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
@@ -216,7 +199,7 @@ async function reviewRegistration(req, res, next) {
       });
     }
 
-    // 8. socket (non-fatal)
+    // and a live socket nudge, also best-effort
     try {
       emitToUser(req.app, record.user_id, 'registration_update', {
         action,
@@ -243,15 +226,12 @@ async function reviewRegistration(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // DELETE /api/admin/registrations/:id
-// ------------------------------------------------------------
 async function deleteRegistration(req, res, next) {
   try {
     const { id } = req.params;
     const { type } = req.query;
 
-    // 1. validate type
     if (type !== 'company' && type !== 'pharmacy') {
       return res
         .status(400)
@@ -260,7 +240,6 @@ async function deleteRegistration(req, res, next) {
 
     const table = type === 'company' ? 'companies' : 'pharmacies';
 
-    // 2. find record + its user_id
     const [rows] = await pool.query(
       `SELECT user_id FROM ${table} WHERE id = ? LIMIT 1`,
       [id]
@@ -271,7 +250,7 @@ async function deleteRegistration(req, res, next) {
         .json({ success: false, message: 'Registration not found' });
     }
 
-    // 3. delete the user (CASCADE removes the company/pharmacy row)
+    // just delete the user row - the FK cascade takes the company/pharmacy row with it
     await pool.query('DELETE FROM users WHERE id = ?', [rows[0].user_id]);
 
     return res.json({ success: true, message: 'Registration deleted.' });
@@ -280,10 +259,7 @@ async function deleteRegistration(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
-// PATCH /api/admin/companies/:id/toggle-status
-// PATCH /api/admin/pharmacies/:id/toggle-status
-// ------------------------------------------------------------
+// shared handler behind the company + pharmacy toggle-status routes
 async function toggleAccountStatus(req, type, id, res, next) {
   try {
     if (type !== 'company' && type !== 'pharmacy') {
@@ -377,12 +353,11 @@ async function toggleAccountStatus(req, type, id, res, next) {
       console.error('[admin] socket emit failed:', sockErr.message);
     }
 
-    // When a COMPANY is deactivated, auto-reject its still-pending orders.
-    // A deactivated company can no longer log in to accept/reject them (the
-    // auth middleware now blocks inactive accounts), so without this those
-    // orders would sit in 'pending' forever and the pharmacies would never
-    // know. NOTE: order_status_log.status has no 'rejected' value, so we don't
-    // write a status-log row here — the order's rejection_reason records why.
+    // if we just deactivated a COMPANY, auto-reject whatever orders it still has pending.
+    // it can't log in anymore to accept/reject them (auth blocks inactive accounts), so
+    // otherwise they'd hang in 'pending' forever and the pharmacies would be left in the dark.
+    // heads up: order_status_log.status has no 'rejected' value, so we skip the log row here -
+    // the order's rejection_reason is what records why.
     let autoRejected = 0;
     if (type === 'company' && !isActive) {
       let conn;
@@ -407,10 +382,9 @@ async function toggleAccountStatus(req, type, id, res, next) {
               [ord.id]
             );
 
-            // Stock was reserved at checkout, so auto-rejecting each pending
-            // order must return its base units to the pool. quantity_ordered is
-            // PACKAGES; stock is BASE units, so restore quantity_ordered *
-            // units_count per line. Lock each product row FOR UPDATE first.
+            // stock got reserved at checkout, so rejecting each pending order has to give it
+            // back. quantity_ordered is in PACKAGES, stock in BASE units, so add back
+            // quantity_ordered * units_count per line. lock each product row first.
             const [restoreItems] = await conn.query(
               `SELECT oi.product_id, oi.quantity_ordered,
                       COALESCE(pu.units_count, 1) AS units_count
@@ -438,7 +412,7 @@ async function toggleAccountStatus(req, type, id, res, next) {
           conn = null;
           autoRejected = pending.length;
 
-          // notify each affected pharmacy (non-blocking)
+          // let each affected pharmacy know their order got auto-rejected, best-effort
           for (const ord of pending) {
             if (!ord.pharmacy_user_id) continue;
             const body = `Your order #${ord.id} was automatically rejected because the company is no longer available.`;
@@ -466,7 +440,7 @@ async function toggleAccountStatus(req, type, id, res, next) {
           }
           conn.release();
         }
-        // Don't fail the deactivation itself if the cascade hits a problem.
+        // the deactivation already happened and matters more - don't fail it if this cleanup trips
         console.error('[admin] auto-reject pending orders failed:', arErr.message);
       }
     }
@@ -490,12 +464,8 @@ function togglePharmacyStatus(req, res, next) {
   return toggleAccountStatus(req, 'pharmacy', req.params.id, res, next);
 }
 
-// ------------------------------------------------------------
-// DELETE /api/admin/companies/:id
-// DELETE /api/admin/pharmacies/:id
-// Permanently delete an account, but only when it has no order
-// history — otherwise the admin must deactivate it instead.
-// ------------------------------------------------------------
+// shared handler for the company + pharmacy hard-delete routes. only allowed when there's
+// zero order history - if they've ever had orders, the admin has to deactivate instead.
 async function deleteCompanyOrPharmacy(type, id, res, next) {
   try {
     if (type !== 'company' && type !== 'pharmacy') {
@@ -507,7 +477,6 @@ async function deleteCompanyOrPharmacy(type, id, res, next) {
     const table = type === 'company' ? 'companies' : 'pharmacies';
     const orderColumn = type === 'company' ? 'company_id' : 'pharmacy_id';
 
-    // find the record + its user_id
     const [rows] = await pool.query(
       `SELECT user_id FROM ${table} WHERE id = ? LIMIT 1`,
       [id]
@@ -519,7 +488,7 @@ async function deleteCompanyOrPharmacy(type, id, res, next) {
     }
     const userId = rows[0].user_id;
 
-    // block deletion when the account has any order history
+    // any orders at all? then no hard delete, we'd lose financial history
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS cnt FROM orders WHERE ${orderColumn} = ?`,
       [id]
@@ -532,17 +501,14 @@ async function deleteCompanyOrPharmacy(type, id, res, next) {
       });
     }
 
-    // delete the user (CASCADE removes company/pharmacy row, products, drivers, etc.)
+    // deleting the user cascades to the company/pharmacy row, its products, drivers, etc.
     if (type === 'company') {
-      // A company's private categories (product_categories.company_id = this
-      // company) must be removed too — the FK is ON DELETE SET NULL, so they'd
-      // otherwise survive as NULL (general) categories visible to every
-      // company, leaking a private category into the global pool.
-      //
-      // We capture their ids first, then delete the company (via its user).
-      // That cascade removes this company's products, so by the time we delete
-      // the captured categories nothing references them (products.category_id
-      // is ON DELETE RESTRICT, which would block a delete-before-cascade).
+      // but the company's private categories need handling by hand: that FK is ON DELETE
+      // SET NULL, so they'd survive with company_id NULL - which means "general" category
+      // visible to everyone. that would leak a private category into the global pool.
+      // so grab their ids now, delete the company (via its user) which cascades its products
+      // away, and only then delete the categories - by that point nothing references them
+      // (products.category_id is ON DELETE RESTRICT, which would block deleting them first).
       const [cats] = await pool.query(
         'SELECT id FROM product_categories WHERE company_id = ?',
         [id]
@@ -597,18 +563,15 @@ function deletePharmacy(req, res, next) {
   return deleteCompanyOrPharmacy('pharmacy', req.params.id, res, next);
 }
 
-// ------------------------------------------------------------
-// Shared helper for manual account creation (company / pharmacy)
-// ------------------------------------------------------------
+// shared handler for admin hand-creating a company / pharmacy account
 async function createAccount(req, res, next, role) {
   let conn;
   try {
     const { email, password, name, phone, address, description, owner_name } =
       req.body || {};
 
-    // description + address are NOT NULL on these tables. Admin-created accounts
-    // don't require them in the form, so fall back to a placeholder the admin
-    // can edit later rather than rejecting the request.
+    // description + address are NOT NULL in the DB but the admin form doesn't ask for them,
+    // so drop in 'N/A' they can edit later instead of rejecting the create
     const addressValue =
       typeof address === 'string' && address.trim() ? address.trim() : 'N/A';
     const descriptionValue =
@@ -616,7 +579,6 @@ async function createAccount(req, res, next, role) {
         ? description.trim()
         : 'N/A';
 
-    // 1. required fields
     if (!email || !password || !name) {
       return res.status(400).json({
         success: false,
@@ -624,14 +586,12 @@ async function createAccount(req, res, next, role) {
       });
     }
 
-    // 2. email format
     if (!EMAIL_REGEX.test(email)) {
       return res
         .status(400)
         .json({ success: false, message: 'Invalid email format' });
     }
 
-    // 3. email uniqueness
     const [existing] = await pool.query(
       'SELECT id FROM users WHERE email = ? LIMIT 1',
       [email]
@@ -642,16 +602,14 @@ async function createAccount(req, res, next, role) {
         .json({ success: false, message: 'Email is already registered' });
     }
 
-    // 4. password strength
     const pwError = validatePassword(password);
     if (pwError) {
       return res.status(400).json({ success: false, message: pwError });
     }
 
-    // 5. hash
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    // 6. transaction (admin-created accounts are active + verified)
+    // admin-made accounts skip the whole verify/approve dance - active + verified from the start
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
@@ -711,11 +669,8 @@ function createPharmacy(req, res, next) {
   return createAccount(req, res, next, 'pharmacy');
 }
 
-// ------------------------------------------------------------
-// Shared helper for editing the public profile fields
-// (description + address) of a company / pharmacy.
-// Both columns are NOT NULL, so each must be a non-empty string.
-// ------------------------------------------------------------
+// shared handler for editing a company/pharmacy's public profile (description + address).
+// both columns are NOT NULL so we require a non-empty string for each.
 async function updateProfile(req, res, next, table) {
   try {
     const { id } = req.params;
@@ -768,9 +723,7 @@ function updatePharmacy(req, res, next) {
   return updateProfile(req, res, next, 'pharmacies');
 }
 
-// ------------------------------------------------------------
 // GET /api/admin/orders
-// ------------------------------------------------------------
 async function getOrders(req, res, next) {
   try {
     const { status, company_id, pharmacy_id, from, to, search, pharmacy, company } =
@@ -779,8 +732,8 @@ async function getOrders(req, res, next) {
     const limit = toInt(req.query.limit, 20);
     const offset = (page - 1) * limit;
 
-    // pharmacy/company name search needs the joins to be present, so the count
-    // query joins the same tables as the listing query below.
+    // the name filters need the pharmacy/company joins, so the count query below joins the
+    // same tables as the listing query - keep them in sync or the totals go wrong
     const conditions = [];
     const params = [];
 
@@ -804,7 +757,7 @@ async function getOrders(req, res, next) {
       conditions.push('o.created_at <= ?');
       params.push(to);
     }
-    // Order-ID search (partial match on the numeric id).
+    // lets them type part of an order id and still match
     if (search) {
       conditions.push('CAST(o.id AS CHAR) LIKE ?');
       params.push(`%${search}%`);
@@ -820,8 +773,7 @@ async function getOrders(req, res, next) {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // total count for pagination (same joins as the listing query so the
-    // pharmacy/company name filters resolve)
+    // count for paging - same joins as the listing query so the name filters resolve
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS total
          FROM orders o
@@ -856,9 +808,7 @@ async function getOrders(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // GET /api/admin/drivers
-// ------------------------------------------------------------
 async function getAllDrivers(req, res, next) {
   try {
     const [drivers] = await pool.query(
@@ -875,9 +825,7 @@ async function getAllDrivers(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // GET /api/admin/market
-// ------------------------------------------------------------
 async function getMarket(req, res, next) {
   try {
     const { search, company_id, type_id, category_id } = req.query;
@@ -933,6 +881,7 @@ async function getMarket(req, res, next) {
       [...params, limit, offset]
     );
 
+    // flatten the discount subquery into a boolean the table can read directly
     for (const p of products) {
       p.has_bulk_discount = Number(p.bulk_discount_count) > 0;
     }
@@ -943,9 +892,7 @@ async function getMarket(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // GET /api/admin/categories
-// ------------------------------------------------------------
 async function getCategories(req, res, next) {
   try {
     const [categories] = await pool.query(
@@ -960,21 +907,18 @@ async function getCategories(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // POST /api/admin/categories
-// ------------------------------------------------------------
 async function createCategory(req, res, next) {
   try {
     const { name, description, company_id } = req.body || {};
 
-    // 1. name required
     if (!name) {
       return res
         .status(400)
         .json({ success: false, message: 'Category name is required' });
     }
 
-    // 2. if company_id given, verify it exists
+    // if they scoped it to a company, make sure that company is real
     if (company_id) {
       const [companies] = await pool.query(
         'SELECT id FROM companies WHERE id = ? LIMIT 1',
@@ -987,7 +931,6 @@ async function createCategory(req, res, next) {
       }
     }
 
-    // 3. insert
     const [result] = await pool.query(
       `INSERT INTO product_categories (name, description, company_id, created_by_admin)
        VALUES (?, ?, ?, TRUE)`,
@@ -1000,14 +943,11 @@ async function createCategory(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // DELETE /api/admin/categories/:id
-// ------------------------------------------------------------
 async function deleteCategory(req, res, next) {
   try {
     const { id } = req.params;
 
-    // 1. exists?
     const [rows] = await pool.query(
       'SELECT id FROM product_categories WHERE id = ? LIMIT 1',
       [id]
@@ -1018,7 +958,7 @@ async function deleteCategory(req, res, next) {
         .json({ success: false, message: 'Category not found' });
     }
 
-    // 2. in use?
+    // don't let them delete one that products still point at (FK is RESTRICT anyway, nicer error here)
     const [countRows] = await pool.query(
       'SELECT COUNT(*) AS cnt FROM products WHERE category_id = ?',
       [id]
@@ -1030,7 +970,6 @@ async function deleteCategory(req, res, next) {
       });
     }
 
-    // 3. delete
     await pool.query('DELETE FROM product_categories WHERE id = ?', [id]);
 
     return res.json({ success: true, message: 'Category deleted.' });
@@ -1039,9 +978,7 @@ async function deleteCategory(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // GET /api/admin/product-types
-// ------------------------------------------------------------
 async function getProductTypes(req, res, next) {
   try {
     const [types] = await pool.query(
@@ -1053,21 +990,17 @@ async function getProductTypes(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // POST /api/admin/product-types
-// ------------------------------------------------------------
 async function addProductType(req, res, next) {
   try {
     const { name } = req.body || {};
 
-    // 1. name required
     if (!name) {
       return res
         .status(400)
         .json({ success: false, message: 'Product type name is required' });
     }
 
-    // 2. insert
     const [result] = await pool.query(
       'INSERT INTO product_types (name) VALUES (?)',
       [name]
@@ -1079,14 +1012,11 @@ async function addProductType(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // DELETE /api/admin/product-types/:id
-// ------------------------------------------------------------
 async function deleteProductType(req, res, next) {
   try {
     const { id } = req.params;
 
-    // 1. exists?
     const [rows] = await pool.query(
       'SELECT id FROM product_types WHERE id = ? LIMIT 1',
       [id]
@@ -1097,7 +1027,7 @@ async function deleteProductType(req, res, next) {
         .json({ success: false, message: 'Product type not found' });
     }
 
-    // 2. in use?
+    // same deal as categories - block it if products still use this type
     const [countRows] = await pool.query(
       'SELECT COUNT(*) AS cnt FROM products WHERE product_type_id = ?',
       [id]
@@ -1109,7 +1039,6 @@ async function deleteProductType(req, res, next) {
       });
     }
 
-    // 3. delete
     await pool.query('DELETE FROM product_types WHERE id = ?', [id]);
 
     return res.json({ success: true, message: 'Product type deleted.' });
@@ -1118,16 +1047,11 @@ async function deleteProductType(req, res, next) {
   }
 }
 
-// ============================================================
-//  PLATFORM STATS
-// ============================================================
-
-// GET /api/admin/stats
-// Server-side aggregates for the admin dashboard KPIs. Computed in SQL over the
-// whole dataset so the figures are exact (the old client-side reduce ran over a
-// capped 1000-row page and counted undelivered orders as debt). total_debt
-// sums (total_amount - paid_amount) over delivered orders only, which includes
-// the negative balances of manual payment / overpaid orders — matching
+// GET /api/admin/stats - the dashboard KPI numbers.
+// we compute these in SQL over the whole dataset on purpose: the old version did a client-side
+// reduce over just the first 1000-row page AND counted undelivered orders as debt, so the
+// numbers were wrong. total_debt sums (total_amount - paid_amount) over delivered orders only,
+// which includes the negative balances from overpaid/manual-payment orders - matches
 // v_pharmacy_debts.SUM(debt_amount).
 async function getStats(req, res, next) {
   try {
@@ -1167,11 +1091,9 @@ async function getStats(req, res, next) {
   }
 }
 
-// GET /api/admin/top-debtors
-// The five pharmacies with the largest outstanding balance. debt_amount nets
-// out credit/overpayment lines, so we sum per pharmacy and keep only those
-// still in the red (HAVING > 0) — a pharmacy that has settled up shouldn't
-// surface on a receivables watchlist.
+// GET /api/admin/top-debtors - the 5 pharmacies that owe the most.
+// debt_amount already nets out credits/overpayments, so we sum per pharmacy and keep only the
+// ones still in the red (HAVING > 0) - no point listing someone who's all paid up on a debt watchlist.
 async function getTopDebtors(req, res, next) {
   try {
     const [rows] = await pool.query(
@@ -1199,10 +1121,8 @@ async function getTopDebtors(req, res, next) {
   }
 }
 
-// GET /api/admin/top-companies
-// The five suppliers ranked by cash actually collected (paid_amount), not
-// merely billed — revenue recognised is money in the door. total_orders is the
-// count of settled order lines backing that revenue.
+// GET /api/admin/top-companies - top 5 suppliers by cash actually collected (paid_amount),
+// not just billed - we count money in the door. total_orders is how many settled orders back it.
 async function getTopCompanies(req, res, next) {
   try {
     const [rows] = await pool.query(

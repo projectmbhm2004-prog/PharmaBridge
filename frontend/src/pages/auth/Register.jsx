@@ -41,7 +41,7 @@ const ROLE_OPTIONS = [
   },
 ];
 
-/** Returns the password strength bucket per PRD rules. */
+// buckets the password into weak/medium/strong using the same rules the backend checks
 function getStrength(pw) {
   if (!pw) return null;
   const hasUpper = /[A-Z]/.test(pw);
@@ -81,7 +81,7 @@ export default function Register() {
   const [step, setStep] = useState(1);
   const [role, setRole] = useState("");
 
-  // Form fields (superset across roles).
+  // one form object holding every field any role might need (superset)
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -100,7 +100,7 @@ export default function Register() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Driver: company search.
+  // driver signup: searching for the company to apply to
   const [companyQuery, setCompanyQuery] = useState("");
   const [companyResults, setCompanyResults] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState(null);
@@ -113,7 +113,7 @@ export default function Register() {
     setFieldErrors((e) => ({ ...e, [key]: undefined }));
   }
 
-  // Debounced company search for drivers.
+  // debounce the company search so we're not hitting the API on every keystroke
   useEffect(() => {
     if (role !== "driver" || selectedCompany) return;
     const q = companyQuery.trim();
@@ -155,7 +155,7 @@ export default function Register() {
       return;
     }
 
-    // Description + Address are required for every role and shown publicly.
+    // description + address are required for everyone since they're shown publicly
     const nextErrors = {};
     if (!form.description.trim()) {
       nextErrors.description = "Description is required.";
@@ -168,7 +168,7 @@ export default function Register() {
       return;
     }
 
-    // Build the role-specific payload.
+    // assemble the payload for whichever role they picked
     const payload = {
       role,
       email: form.email,
@@ -580,7 +580,7 @@ export default function Register() {
   );
 }
 
-/** Labelled form field with optional inline error. */
+// labelled input with an optional inline error underneath
 function Field({ label, required, error, children }) {
   return (
     <div>

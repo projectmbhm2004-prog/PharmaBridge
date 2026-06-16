@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-/** Milliseconds remaining until `endsAt`, or null if the date is invalid. */
+// ms left until endsAt, or null if the date is junk
 function getRemaining(endsAt) {
   if (!endsAt) return null;
   const end = new Date(endsAt).getTime();
@@ -8,7 +8,7 @@ function getRemaining(endsAt) {
   return Math.max(0, end - Date.now());
 }
 
-/** "05:09:32" */
+// ms -> "05:09:32"
 function formatHMS(ms) {
   const totalSeconds = Math.floor(ms / 1000);
   const h = Math.floor(totalSeconds / 3600);
@@ -18,12 +18,8 @@ function formatHMS(ms) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-/**
- * Live HH:MM:SS countdown to an offer's expiry.
- * Green normally, red + pulse under one hour, "Expired" once elapsed.
- *
- * @param {{ offerEndsAt?: string }} props ISO timestamp the offer ends at.
- */
+// live HH:MM:SS countdown to when an offer ends. green normally, goes red + pulses under an
+// hour, and shows "Expired" once it's done.
 export default function CountdownTimer({ offerEndsAt }) {
   const [remaining, setRemaining] = useState(() => getRemaining(offerEndsAt));
 

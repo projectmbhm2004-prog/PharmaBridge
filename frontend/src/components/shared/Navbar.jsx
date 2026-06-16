@@ -4,7 +4,7 @@ import NotificationBell from "@/components/shared/NotificationBell";
 import useAuth from "@/hooks/useAuth";
 import useCart from "@/hooks/useCart";
 
-/** Top bar for dashboard pages. */
+// the top bar on dashboard pages
 export default function Navbar({ title }) {
   const { user, role } = useAuth();
   const { totalItems } = useCart();

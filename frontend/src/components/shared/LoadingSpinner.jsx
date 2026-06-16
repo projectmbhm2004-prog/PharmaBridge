@@ -1,6 +1,6 @@
 const SIZES = { sm: 16, md: 32, lg: 48 };
 
-/** Centered spinning circle in the brand green. */
+// centered spinner in the brand green
 export default function LoadingSpinner({ size = "md" }) {
   const px = SIZES[size] ?? SIZES.md;
 

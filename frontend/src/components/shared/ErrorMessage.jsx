@@ -1,6 +1,6 @@
 import { AlertCircle } from "lucide-react";
 
-/** Red alert box for surfacing an error message. */
+// red alert box for showing an error
 export default function ErrorMessage({ message }) {
   if (!message) return null;
 

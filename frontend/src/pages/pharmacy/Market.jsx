@@ -38,18 +38,18 @@ export default function Market() {
   const navigate = useNavigate();
   const { addItem } = useCart();
 
-  // Filters
+  // filter state
   const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState(""); // debounced
+  const [search, setSearch] = useState(""); // debounced version of searchInput
   const [companyId, setCompanyId] = useState("");
   const [sort, setSort] = useState("newest");
-  // Price range — typed inputs are debounced into the applied values.
+  // typed price inputs get debounced into the values we actually filter on
   const [minInput, setMinInput] = useState("");
   const [maxInput, setMaxInput] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
 
-  // Data
+  // loaded data
   const [companies, setCompanies] = useState([]);
   const [top5, setTop5] = useState([]);
   const [offers, setOffers] = useState([]);
@@ -58,16 +58,16 @@ export default function Market() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  // Add-to-cart in-flight tracking (per product)
+  // which product is mid add-to-cart, so we can show a spinner on just that one
   const [addingId, setAddingId] = useState(null);
 
-  // Debounce the search input (400ms).
+  // debounce search, 400ms
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), 400);
     return () => clearTimeout(id);
   }, [searchInput]);
 
-  // Debounce the price range (400ms) so typing doesn't refetch on every keystroke.
+  // debounce the price range too, so we don't refetch on every keystroke
   useEffect(() => {
     const id = setTimeout(() => {
       setMinPrice(minInput.trim());
@@ -76,7 +76,7 @@ export default function Market() {
     return () => clearTimeout(id);
   }, [minInput, maxInput]);
 
-  // One-time loads: companies, top 5, offers.
+  // load these once: company list, top 5, current offers
   useEffect(() => {
     (async () => {
       try {
@@ -104,12 +104,12 @@ export default function Market() {
     })();
   }, []);
 
-  // Reset to page 1 whenever a server-side filter changes.
+  // any filter change kicks us back to page 1
   useEffect(() => {
     setPage(1);
   }, [search, companyId, sort, minPrice, maxPrice]);
 
-  // Fetch products (page 1 replaces, later pages append).
+  // load products - page 1 replaces the list, later pages append (infinite scroll style)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -146,9 +146,8 @@ export default function Market() {
 
   const canLoadMore = products.length < total;
 
-  // ── Add to cart ──────────────────────────────────────────────
-  // Multi-company cart: adding always succeeds unless the backend rejects it
-  // (stock / availability), which addItem surfaces as a toast.
+  // add to cart - with the multi-company cart this basically always works unless the backend
+  // says no (stock/availability), and addItem already toasts that case
   async function addToCart(product) {
     setAddingId(product.id);
     const res = await addItem(product.id, 1);
@@ -156,7 +155,7 @@ export default function Market() {
     setAddingId(null);
   }
 
-  // Active filter chips
+  // the little removable chips showing what's currently filtered
   const chips = [];
   if (search) chips.push({ key: "search", label: `"${search}"`, clear: () => { setSearchInput(""); setSearch(""); } });
   if (companyId) chips.push({ key: "company", label: companyName || "Company", clear: () => setCompanyId("") });
@@ -380,7 +379,7 @@ export default function Market() {
   );
 }
 
-/** Horizontal scroller with a header and prev/next arrows. */
+// horizontal scroller with a header and prev/next arrows
 function Carousel({ title, subtitle, icon: Icon, iconClass, children }) {
   const scrollerRef = useRef(null);
 
@@ -426,7 +425,7 @@ function Carousel({ title, subtitle, icon: Icon, iconClass, children }) {
   );
 }
 
-/** Compact carousel card (top 5). */
+// compact card for the top-5 carousel
 function MiniCard({ product, onClick }) {
   const hasOffer = !!product.has_offer && product.offer_price != null;
   return (
@@ -476,7 +475,7 @@ function MiniCard({ product, onClick }) {
   );
 }
 
-/** Carousel offer card with countdown. */
+// offer card for the carousel, with the live countdown
 function OfferCard({ product, onClick }) {
   return (
     <button
@@ -517,7 +516,7 @@ function OfferCard({ product, onClick }) {
   );
 }
 
-/** Main grid product card with add-to-cart. */
+// the main grid product card, this one has the add-to-cart button
 function ProductCard({ product, index, adding, onAdd, onOpen }) {
   const hasOffer = !!product.has_offer && product.offer_price != null;
   const lowStock =
@@ -616,7 +615,7 @@ function ProductCard({ product, index, adding, onAdd, onOpen }) {
   );
 }
 
-/** Read-only 5-star display. */
+// plain read-only 5-star display
 function Stars({ value, count }) {
   return (
     <div className="mt-2 flex items-center gap-1">
@@ -641,7 +640,7 @@ function Stars({ value, count }) {
   );
 }
 
-/** Pill tab for "Browse by company". */
+// pill tab used in the "browse by company" row
 function PillTab({ active, onClick, children }) {
   return (
     <button

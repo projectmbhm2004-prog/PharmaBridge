@@ -1,10 +1,6 @@
 import { getStatusColor, getStatusLabel } from "@/lib/utils";
 
-/**
- * Rounded pill showing a status with its themed colors.
- *
- * @param {{ status?: string }} props
- */
+// little rounded pill that shows a status in its themed colors
 export default function StatusBadge({ status }) {
   return (
     <span

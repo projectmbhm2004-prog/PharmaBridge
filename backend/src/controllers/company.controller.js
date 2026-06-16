@@ -1,12 +1,6 @@
-// ============================================================
-//  Company controller
-// ============================================================
-//  Incoming orders (accept/reject + driver assignment), product
-//  CRUD + Cloudinary images, driver management, financial record,
-//  and marketplace view.
-//  All handlers: try/catch -> next(err); multi-table writes use
-//  transactions; Cloudinary is non-fatal; email/socket non-blocking.
-// ============================================================
+// company controller - incoming orders (accept/reject + assign a driver), product CRUD with
+// Cloudinary images, driver management, the financial view, and the market view. multi-table
+// writes use transactions, Cloudinary/email/socket are all best-effort.
 
 const pool = require('../config/db');
 const cloudinary = require('../config/cloudinary');
@@ -15,16 +9,7 @@ const { emitToUser } = require('../services/socket.service');
 const { AppError } = require('../middleware/errorHandler');
 const { unitEffectivePrice } = require('../utils/pricing');
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-
-/**
- * Load the company row owned by the given user.
- * @param {number} userId
- * @returns {Promise<object>} company row
- * @throws {AppError} 404 when the user has no company profile
- */
+// grab the company row for this user, 404 if there's no company profile
 async function getCompany(userId) {
   const [rows] = await pool.query(
     'SELECT * FROM companies WHERE user_id = ? LIMIT 1',
@@ -36,14 +21,14 @@ async function getCompany(userId) {
   return rows[0];
 }
 
-/** Fire-and-forget email; never throws into the request flow. */
+// send and forget - swallow errors so a flaky mail server can't fail the request
 function sendEmailSafe(opts) {
   sendEmail(opts).catch((err) =>
     console.error('[company] email failed:', err.message)
   );
 }
 
-/** Non-fatal socket emit. */
+// wrap emit so a socket hiccup never breaks the request
 function emitSafe(app, userId, event, data) {
   try {
     emitToUser(app, userId, event, data);
@@ -52,23 +37,23 @@ function emitSafe(app, userId, event, data) {
   }
 }
 
-/** Parse a positive integer with a fallback. */
+// an offer_ends_at, when set, has to be strictly in the future - a past/today date makes the
+// offer invisible the moment it's saved. accepts a date or datetime string and returns true only
+// if it parses and lands after now.
+function isFutureDate(value) {
+  const ts = Date.parse(value);
+  return !Number.isNaN(ts) && ts > Date.now();
+}
+
+// positive int or fallback, for page/limit
 function toInt(value, fallback) {
   const n = parseInt(value, 10);
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-/**
- * Notify a pharmacy that its order was rejected. Shared by rejectOrder (full
- * up-front rejection) and acceptOrder's 100%-rejected path so both produce the
- * identical pharmacy-facing notification + socket event. Non-blocking writes,
- * non-fatal emits — never throws into the request flow.
- *
- * @param {import('express').Application} app
- * @param {number} pharmacyId  orders.pharmacy_id
- * @param {number|string} orderId
- * @param {string|null} reason  optional rejection reason
- */
+// tell a pharmacy its order got rejected. shared by rejectOrder (the up-front reject) and
+// acceptOrder's "everything got rejected" path so both send the exact same notification + event.
+// best-effort, never throws back into the request.
 async function notifyPharmacyRejected(app, pharmacyId, orderId, reason) {
   try {
     const [phRows] = await pool.query(
@@ -99,7 +84,8 @@ async function notifyPharmacyRejected(app, pharmacyId, orderId, reason) {
   }
 }
 
-/** Safely parse a JSON_ARRAYAGG result and drop rows whose id is null. */
+// JSON_ARRAYAGG on a LEFT JOIN with no matches gives you a [{id:null,...}] row, so parse the
+// aggregate and drop any null-id junk rows
 function parseAgg(value) {
   if (!value) return [];
   let arr;
@@ -110,18 +96,15 @@ function parseAgg(value) {
       return [];
     }
   } else {
-    arr = value; // mysql2 may already hydrate JSON columns
+    arr = value; // mysql2 sometimes hands us an already-parsed array
   }
   if (!Array.isArray(arr)) return [];
   return arr.filter((item) => item && item.id !== null && item.id !== undefined);
 }
 
-/**
- * Validate + normalize an incoming packaging `units` array (product create).
- * Returns { units } on success or { error } (a user-facing message) on failure.
- * Exactly one row is flagged is_default — the smallest units_count if the
- * caller didn't pick one.
- */
+// validate + clean up an incoming packaging units array. returns { units } on success or
+// { error } with a user-facing message. exactly one row ends up is_default - the smallest
+// packaging if the caller didn't flag one.
 function normalizeUnits(input) {
   if (!Array.isArray(input) || input.length === 0) {
     return { error: 'At least one packaging unit is required' };
@@ -167,8 +150,7 @@ function normalizeUnits(input) {
     });
   }
 
-  // Exactly one default: keep the first explicitly-marked one, else the
-  // smallest packaging.
+  // pick the default: first one they explicitly marked, otherwise the smallest pack
   let defaultIdx = rows.findIndex((r) => r.is_default);
   if (defaultIdx === -1) {
     defaultIdx = rows.reduce(
@@ -182,10 +164,6 @@ function normalizeUnits(input) {
 
   return { units: rows };
 }
-
-// ============================================================
-//  ORDERS
-// ============================================================
 
 // GET /api/company/orders
 async function getOrders(req, res, next) {
@@ -215,7 +193,7 @@ async function getOrders(req, res, next) {
       conditions.push('o.created_at <= ?');
       params.push(to);
     }
-    // Free-text search matches the order id or the pharmacy name.
+    // search box hits either the order id or the pharmacy name
     if (search) {
       conditions.push('(CAST(o.id AS CHAR) LIKE ? OR ph.name LIKE ?)');
       params.push(`%${search}%`, `%${search}%`);
@@ -223,8 +201,7 @@ async function getOrders(req, res, next) {
 
     const where = `WHERE ${conditions.join(' AND ')}`;
 
-    // total (distinct orders matching the filters; joins pharmacies so the
-    // pharmacy-name search resolves)
+    // count for paging - joins pharmacies so the name search resolves, same as the listing query
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS total
          FROM orders o
@@ -291,16 +268,13 @@ async function getOrders(req, res, next) {
 }
 
 // PATCH /api/company/orders/:id/accept
-//
-// Accepts a pending order and assigns a driver. Optionally takes an
-// `item_rejections` array — [{ order_item_id, quantity_rejected,
-// rejection_reason }] — letting the company reject some/all of an item's
-// quantity at accept time. When absent/empty this behaves exactly as before
-// (full accept). For each rejected portion we persist quantity_rejected +
-// rejection_reason and restore the rejected base units to stock (same primitive
-// as driver.deliverOrder), then recompute total_amount over the ACCEPTED
-// quantities. If every item ends up 100% rejected the order is fully rejected
-// (status='rejected', no driver) and follows rejectOrder's notification path.
+// accept a pending order and assign a driver. can optionally take an item_rejections array
+// ([{ order_item_id, quantity_rejected, rejection_reason }]) so the company can reject part or
+// all of an item right at accept time. no rejections = plain full accept like before. for each
+// rejected chunk we save quantity_rejected + reason and put those base units back in stock (same
+// move as driver.deliverOrder), then recompute total_amount over only the accepted quantities.
+// if literally everything gets rejected, the order goes to 'rejected' with no driver and follows
+// the same notification path as a normal reject.
 async function acceptOrder(req, res, next) {
   let conn;
   try {
@@ -324,8 +298,8 @@ async function acceptOrder(req, res, next) {
     }
     const order = orders[0];
 
-    // Load the order's line items (with packaging units_count + unit_price) to
-    // validate rejections, recompute the total, and decide a full rejection.
+    // pull the line items (with units_count + unit_price) - we need them to validate the
+    // rejections, recompute the total, and work out whether the whole order got rejected
     const [orderItems] = await pool.query(
       `SELECT oi.id, oi.product_id, oi.quantity_ordered, oi.unit_price,
               COALESCE(pu.units_count, 1) AS units_count
@@ -336,8 +310,8 @@ async function acceptOrder(req, res, next) {
     );
     const itemsById = new Map(orderItems.map((it) => [Number(it.id), it]));
 
-    // Validate + normalize each rejection into a per-item map. quantity_rejected
-    // must be an integer in [0, quantity_ordered]; last entry per item wins.
+    // validate each rejection into a per-item map. quantity_rejected has to be a whole number
+    // between 0 and what was ordered. if an item shows up twice, the last entry wins.
     const rejByItem = new Map();
     for (const r of itemRejections) {
       const oiId = Number(r && r.order_item_id);
@@ -374,7 +348,7 @@ async function acceptOrder(req, res, next) {
       ([, v]) => v.qtyRejected > 0
     );
 
-    // Full rejection: every line item has its entire quantity rejected.
+    // "fully rejected" = every single line had its whole quantity knocked back
     const fullyRejected =
       orderItems.length > 0 &&
       orderItems.every((it) => {
@@ -382,8 +356,7 @@ async function acceptOrder(req, res, next) {
         return v && v.qtyRejected === it.quantity_ordered;
       });
 
-    // A driver is required for a normal/partial accept, but NOT when the order
-    // is being fully rejected (no delivery happens).
+    // need a driver for a real accept (full or partial), but not if we're rejecting the whole thing
     let driver = null;
     if (!fullyRejected) {
       if (!driver_id) {
@@ -408,11 +381,10 @@ async function acceptOrder(req, res, next) {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    // Apply each rejection: persist quantity_rejected + reason and restore the
-    // rejected packages to stock. quantity_rejected counts PACKAGES; stock is
-    // held in BASE units, so restore qtyRejected * units_count — the same
-    // base-unit math as checkout reservation and driver-side restore. Lock the
-    // product row FOR UPDATE so a concurrent checkout sees a consistent value.
+    // for each rejection: save quantity_rejected + reason and give the packages back to stock.
+    // quantity_rejected is PACKAGES, stock is BASE units, so add back qtyRejected * units_count -
+    // same conversion checkout and the driver-side restore use. lock the product row first so a
+    // concurrent checkout doesn't read a half-updated number.
     for (const [oiId, v] of appliedRejections) {
       const orderItem = itemsById.get(oiId);
       await conn.query(
@@ -431,7 +403,7 @@ async function acceptOrder(req, res, next) {
       );
     }
 
-    // Recompute total_amount over the ACCEPTED quantities only.
+    // total is only the accepted quantities, rejected stuff doesn't get billed
     let newTotal = 0;
     for (const it of orderItems) {
       const v = rejByItem.get(Number(it.id));
@@ -439,14 +411,12 @@ async function acceptOrder(req, res, next) {
       newTotal += (it.quantity_ordered - qtyRej) * Number(it.unit_price);
     }
 
-    // NOTE: stock for the ACCEPTED portion is NOT decremented here — it was
-    // reserved at checkout (pharmacy.controller.checkout). Accepting only
-    // advances the status and assigns a driver; only the rejected portion (and
-    // a full rejection / later cancellation) returns units to the pool.
+    // heads up: we do NOT take stock for the accepted portion here - that already came off at
+    // checkout. accepting just moves the status forward and assigns a driver. only rejected units
+    // (and full rejects / cancellations) ever go back to the pool.
     if (fullyRejected) {
-      // Mirror rejectOrder: status='rejected', no driver, no status_log row
-      // (order_status_log's ENUM has no 'rejected'). All items were 100%
-      // rejected, so their stock is already fully restored above.
+      // same as rejectOrder: status='rejected', no driver, no status_log row (the log ENUM has
+      // no 'rejected' value). everything was 100% rejected so the stock is already fully back above.
       await conn.query(
         "UPDATE orders SET status = 'rejected', total_amount = ? WHERE id = ?",
         [newTotal, id]
@@ -467,8 +437,7 @@ async function acceptOrder(req, res, next) {
     conn.release();
     conn = null;
 
-    // Full rejection follows the exact same pharmacy notification as a normal
-    // up-front rejectOrder (shared helper), then returns early.
+    // full reject sends the same pharmacy notification as a plain reject, then we're done
     if (fullyRejected) {
       await notifyPharmacyRejected(req.app, order.pharmacy_id, id, null);
       return res.json({
@@ -477,14 +446,14 @@ async function acceptOrder(req, res, next) {
       });
     }
 
-    // pharmacy user id for accept notifications
+    // pharmacy's user id, for the accept notifications below
     const [phRows] = await pool.query(
       'SELECT user_id FROM pharmacies WHERE id = ? LIMIT 1',
       [order.pharmacy_id]
     );
     const pharmacyUserId = phRows.length ? phRows[0].user_id : null;
 
-    // notifications (non-blocking writes, non-fatal emits)
+    // notify the pharmacy and the assigned driver, best-effort
     try {
       if (pharmacyUserId) {
         const accBody = appliedRejections.length
@@ -552,11 +521,9 @@ async function rejectOrder(req, res, next) {
     }
     const order = orders[0];
 
-    // Reject + restore stock atomically. Stock was reserved at checkout, so
-    // rejecting a (still-pending) order must return those base units to the
-    // pool. quantity_ordered counts PACKAGES; stock is BASE units, so restore
-    // quantity_ordered * the packaging's units_count per line. Lock each product
-    // row FOR UPDATE so a concurrent checkout/accept sees a consistent value.
+    // reject and put stock back in one transaction. it was reserved at checkout, so rejecting a
+    // still-pending order has to return those base units. quantity_ordered is PACKAGES, stock is
+    // BASE units, so add back quantity_ordered * units_count per line. lock each product row first.
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
@@ -607,12 +574,10 @@ async function rejectOrder(req, res, next) {
 }
 
 // PATCH /api/company/orders/:id/reassign
-// Reassign an in-progress order to a different active driver. Used when the
-// originally assigned driver was fired / deactivated mid-delivery (their
-// account can no longer move the order forward), or simply to hand the
-// delivery to someone else. Only valid while the order is in flight — never
-// for pending / delivered / rejected orders. The order status is unchanged;
-// only driver_id is swapped.
+// hand an in-flight order to a different active driver. handy when the original driver got fired
+// or deactivated mid-delivery (their account can't move it anymore), or just to swap who's doing
+// it. only works while the order is actually in progress - not for pending/delivered/rejected.
+// the status stays put, we only change driver_id.
 async function reassignDriver(req, res, next) {
   let conn;
   try {
@@ -628,7 +593,7 @@ async function reassignDriver(req, res, next) {
 
     const IN_PROGRESS = ['accepted', 'picked_up', 'on_the_way', 'arrived'];
 
-    // order must belong to this company
+    // has to be this company's order
     const [orders] = await pool.query(
       'SELECT * FROM orders WHERE id = ? AND company_id = ? LIMIT 1',
       [id, company.id]
@@ -640,7 +605,7 @@ async function reassignDriver(req, res, next) {
     }
     const order = orders[0];
 
-    // only in-progress orders can be reassigned
+    // and it has to be mid-flight
     if (!IN_PROGRESS.includes(order.status)) {
       return res.status(400).json({
         success: false,
@@ -649,7 +614,7 @@ async function reassignDriver(req, res, next) {
       });
     }
 
-    // new driver must belong to this company, be accepted and not fired
+    // the new driver has to be ours, accepted, and not fired
     const [drivers] = await pool.query(
       `SELECT * FROM drivers
         WHERE id = ? AND company_id = ?
@@ -672,9 +637,8 @@ async function reassignDriver(req, res, next) {
 
     const oldDriverId = order.driver_id;
 
-    // transaction: swap driver + log. The order keeps its current status, which
-    // is one of the valid order_status_log ENUM values, so we log it as-is with
-    // a note recording the reassignment.
+    // swap the driver and log it. the order keeps its current status (which is a valid log ENUM
+    // value), so we just re-log that status with a note saying it was reassigned.
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
@@ -692,8 +656,7 @@ async function reassignDriver(req, res, next) {
     conn.release();
     conn = null;
 
-    // notify the new driver (so the order shows in their list) and the old one
-    // (so they know it's gone). Non-blocking.
+    // ping the new driver (so it shows up for them) and the old one (so they know it left). best-effort.
     try {
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, body, related_order_id)
@@ -741,10 +704,6 @@ async function reassignDriver(req, res, next) {
   }
 }
 
-// ============================================================
-//  CATEGORIES
-// ============================================================
-
 // GET /api/company/categories
 async function getCategories(req, res, next) {
   try {
@@ -764,10 +723,6 @@ async function getCategories(req, res, next) {
     return next(err);
   }
 }
-
-// ============================================================
-//  PRODUCTS
-// ============================================================
 
 // GET /api/company/products
 async function getProducts(req, res, next) {
@@ -805,7 +760,7 @@ async function getProducts(req, res, next) {
       product.images = parseAgg(product.images).sort(
         (a, b) => a.sort_order - b.sort_order
       );
-      // Smallest packaging first so the form / cards read naturally.
+      // smallest pack first so the form and cards read in a sensible order
       product.units = parseAgg(product.units).sort(
         (a, b) => Number(a.units_count) - Number(b.units_count)
       );
@@ -836,7 +791,6 @@ async function createProduct(req, res, next) {
       units,
     } = req.body || {};
 
-    // required fields
     if (!product_type_id || !category_id || !name || price === undefined) {
       return res.status(400).json({
         success: false,
@@ -844,7 +798,6 @@ async function createProduct(req, res, next) {
       });
     }
 
-    // price > 0
     const priceNum = Number(price);
     if (!(priceNum > 0)) {
       return res
@@ -852,7 +805,7 @@ async function createProduct(req, res, next) {
         .json({ success: false, message: 'price must be greater than 0' });
     }
 
-    // offer validation
+    // if they flagged an offer, an offer_price is mandatory and has to be positive
     const hasOffer = has_offer === true || has_offer === 'true' || has_offer === 1;
     let offerPriceNum = null;
     if (hasOffer) {
@@ -863,9 +816,16 @@ async function createProduct(req, res, next) {
           message: 'offer_price is required and must be greater than 0 when has_offer is true',
         });
       }
+      // an expiry date is optional, but if one is given it can't already be past
+      if (offer_ends_at && !isFutureDate(offer_ends_at)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Offer expiry date must be in the future',
+        });
+      }
     }
 
-    // product type exists
+    // make sure the type is real
     const [types] = await pool.query(
       'SELECT id FROM product_types WHERE id = ? LIMIT 1',
       [product_type_id]
@@ -876,7 +836,7 @@ async function createProduct(req, res, next) {
         .json({ success: false, message: 'Invalid product_type_id' });
     }
 
-    // category exists and is general or owned by this company
+    // category has to be a general one or one this company owns - can't borrow another company's
     const [cats] = await pool.query(
       `SELECT id FROM product_categories
         WHERE id = ? AND (company_id = ? OR company_id IS NULL) LIMIT 1`,
@@ -888,8 +848,7 @@ async function createProduct(req, res, next) {
         .json({ success: false, message: 'Invalid category_id' });
     }
 
-    // Packaging units. If the client doesn't send any, fall back to a single
-    // default "Single" unit so every product is sellable.
+    // packaging. if they didn't send any, give it a default "Single" so the product is sellable
     const unitsInput =
       Array.isArray(units) && units.length > 0
         ? units
@@ -966,6 +925,19 @@ async function updateProduct(req, res, next) {
         .json({ success: false, message: 'Product not found' });
     }
 
+    // if they're setting an offer expiry, it has to be in the future (a non-null past date would
+    // save an offer that's invisible from the start). null clears the date and is fine.
+    if (
+      Object.prototype.hasOwnProperty.call(req.body || {}, 'offer_ends_at') &&
+      req.body.offer_ends_at != null &&
+      !isFutureDate(req.body.offer_ends_at)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Offer expiry date must be in the future',
+      });
+    }
+
     const allowed = [
       'name',
       'description',
@@ -1023,11 +995,9 @@ async function deleteProduct(req, res, next) {
         .json({ success: false, message: 'Product not found' });
     }
 
-    // A product that already appears on an order cannot be hard-deleted
-    // (order_items.product_id is ON DELETE RESTRICT). Detect this up front and
-    // return a clean 400 BEFORE touching Cloudinary — otherwise the images get
-    // destroyed and the DELETE still fails with a raw foreign-key error,
-    // leaving an intact product with missing images.
+    // can't hard-delete a product that's on an order (order_items.product_id is RESTRICT).
+    // catch it here BEFORE we touch Cloudinary - otherwise we'd nuke the images and then the
+    // DELETE fails on the FK anyway, leaving a live product with no pictures
     const [refRows] = await pool.query(
       'SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ?',
       [id]
@@ -1040,7 +1010,7 @@ async function deleteProduct(req, res, next) {
       });
     }
 
-    // remove images from Cloudinary first (non-fatal)
+    // clear the images off Cloudinary first, best-effort - a leftover image there is harmless
     const [images] = await pool.query(
       'SELECT cloudinary_id FROM product_images WHERE product_id = ?',
       [id]
@@ -1053,7 +1023,7 @@ async function deleteProduct(req, res, next) {
       }
     }
 
-    // FK cascade removes product_images rows
+    // the FK cascade takes the product_images rows with it
     await pool.query('DELETE FROM products WHERE id = ?', [id]);
 
     return res.json({ success: true, message: 'Product deleted.' });
@@ -1153,7 +1123,7 @@ async function deleteProductImage(req, res, next) {
         .json({ success: false, message: 'Image not found' });
     }
 
-    // remove from Cloudinary (non-fatal)
+    // drop it from Cloudinary too, best-effort
     try {
       await cloudinary.uploader.destroy(images[0].cloudinary_id);
     } catch (cErr) {
@@ -1168,14 +1138,7 @@ async function deleteProductImage(req, res, next) {
   }
 }
 
-// ============================================================
-//  PRODUCT UNITS (tiered packaging)
-// ============================================================
-
-/**
- * Load a product owned by the company, or throw 404.
- * @returns {Promise<object>} product row
- */
+// load a product that belongs to this company, or throw 404
 async function getOwnedProduct(companyId, productId) {
   const [rows] = await pool.query(
     'SELECT * FROM products WHERE id = ? AND company_id = ? LIMIT 1',
@@ -1202,7 +1165,7 @@ async function getProductUnits(req, res, next) {
       [product.id]
     );
 
-    // Attach the calculated effective price so the company UI can preview it.
+    // tack on the computed price so the company UI can show a live preview per unit
     const withPrice = units.map((u) => ({
       ...u,
       effective_price: unitEffectivePrice(product, u),
@@ -1223,7 +1186,7 @@ async function addProductUnit(req, res, next) {
     const { unit_name, units_count, discount_percent, final_price, is_default } =
       req.body || {};
 
-    // Reuse normalizeUnits for a single row (consistent validation rules).
+    // run the single row through normalizeUnits so it gets the same validation as create
     const normalized = normalizeUnits([
       { unit_name, units_count, discount_percent, final_price, is_default: false },
     ]);
@@ -1232,7 +1195,7 @@ async function addProductUnit(req, res, next) {
     }
     const u = normalized.units[0];
 
-    // Unique unit_name per product (DB also enforces this).
+    // names are unique per product (DB enforces it too, this is just a nicer error)
     const [dupes] = await pool.query(
       'SELECT id FROM product_units WHERE product_id = ? AND LOWER(unit_name) = LOWER(?) LIMIT 1',
       [product.id, u.unit_name]
@@ -1288,7 +1251,7 @@ async function updateProductUnit(req, res, next) {
     const company = await getCompany(req.user.userId);
     const { unitId } = req.params;
 
-    // Unit must belong to a product owned by this company.
+    // the unit has to hang off a product this company owns
     const [units] = await pool.query(
       `SELECT pu.*
          FROM product_units pu
@@ -1316,7 +1279,7 @@ async function updateProductUnit(req, res, next) {
     }
     const u = normalized.units[0];
 
-    // Unique unit_name per product (excluding this row).
+    // name still has to be unique among the product's other units (skip this row itself)
     const [dupes] = await pool.query(
       'SELECT id FROM product_units WHERE product_id = ? AND LOWER(unit_name) = LOWER(?) AND id <> ? LIMIT 1',
       [existing.product_id, u.unit_name, unitId]
@@ -1328,8 +1291,8 @@ async function updateProductUnit(req, res, next) {
       });
     }
 
-    // is_default: honour an explicit boolean (so the default can be moved to
-    // another unit); otherwise keep the current flag.
+    // if they passed is_default explicitly, respect it (lets them move the default to this unit),
+    // otherwise leave the current flag alone
     let makeDefault;
     if (body.is_default !== undefined) {
       makeDefault = body.is_default === true || body.is_default === 1;
@@ -1340,7 +1303,7 @@ async function updateProductUnit(req, res, next) {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    // If this becomes the default, clear the flag on the product's other units.
+    // only one default per product, so if this one becomes it, unset the others
     if (makeDefault) {
       await conn.query(
         'UPDATE product_units SET is_default = FALSE WHERE product_id = ? AND id <> ?',
@@ -1392,7 +1355,7 @@ async function deleteProductUnit(req, res, next) {
     }
     const target = units[0];
 
-    // Never leave a product with zero packaging options.
+    // a product always needs at least one packaging option, don't let them delete the last one
     const [countRows] = await pool.query(
       'SELECT COUNT(*) AS cnt FROM product_units WHERE product_id = ?',
       [target.product_id]
@@ -1409,7 +1372,7 @@ async function deleteProductUnit(req, res, next) {
 
     await conn.query('DELETE FROM product_units WHERE id = ?', [unitId]);
 
-    // If we removed the default, promote the smallest remaining unit.
+    // if we just deleted the default, promote the smallest one that's left
     if (target.is_default === 1 || target.is_default === true) {
       await conn.query(
         `UPDATE product_units
@@ -1438,10 +1401,6 @@ async function deleteProductUnit(req, res, next) {
     return next(err);
   }
 }
-
-// ============================================================
-//  DRIVERS
-// ============================================================
 
 // GET /api/company/drivers
 async function getDrivers(req, res, next) {
@@ -1504,7 +1463,7 @@ async function acceptDriver(req, res, next) {
     conn.release();
     conn = null;
 
-    // email (non-blocking)
+    // let them know by email, best-effort
     const [userRows] = await pool.query(
       'SELECT email FROM users WHERE id = ? LIMIT 1',
       [driver.user_id]
@@ -1716,18 +1675,13 @@ async function deleteDriver(req, res, next) {
       });
     }
 
-    // Block permanent deletion once the driver has any operational history.
-    // Three reasons:
-    //  - order_status_log.changed_by is ON DELETE RESTRICT, so deleting the
-    //    user of a driver who ever moved an order would fail with a raw FK
-    //    error (HTTP 500) instead of a clean message.
-    //  - orders.driver_id / financial_records.driver_id are ON DELETE SET NULL,
-    //    so deletion would erase which driver handled / collected on past
-    //    orders (history corruption).
-    //  - ratings.driver_id is ON DELETE CASCADE, so deletion would silently
-    //    wipe the driver's rating history.
-    // A terminated driver already cannot log in, so this loses no capability —
-    // it just keeps the historical record intact (deactivate, don't delete).
+    // no hard delete once a driver has any history. three separate reasons:
+    //  - order_status_log.changed_by is RESTRICT, so deleting a driver who ever moved an order
+    //    would blow up with a raw FK error (500) instead of a clean message
+    //  - orders.driver_id / financial_records.driver_id are SET NULL, so we'd lose who actually
+    //    handled / collected on past orders - history goes fuzzy
+    //  - ratings.driver_id is CASCADE, so we'd silently wipe their rating history
+    // they're already terminated and can't log in, so keeping the row costs nothing - deactivate, don't delete
     const [refRows] = await pool.query(
       `SELECT
          (SELECT COUNT(*) FROM order_status_log WHERE changed_by = ?) +
@@ -1743,7 +1697,7 @@ async function deleteDriver(req, res, next) {
       });
     }
 
-    // Deleting the user cascades to the driver row via FK.
+    // delete the user and the FK cascade takes the driver row with it
     await pool.query('DELETE FROM users WHERE id = ?', [driver.user_id]);
 
     return res.json({ success: true, message: 'Driver permanently deleted.' });
@@ -1751,10 +1705,6 @@ async function deleteDriver(req, res, next) {
     return next(err);
   }
 }
-
-// ============================================================
-//  FINANCIAL
-// ============================================================
 
 // GET /api/company/financial
 async function getFinancial(req, res, next) {
@@ -1777,10 +1727,10 @@ async function getFinancial(req, res, next) {
       conditions.push('fr.created_at <= ?');
       params.push(to);
     }
-    // Three mutually-exclusive states that fully partition every record:
-    //   paid    -> nothing owed (debt_amount = 0) OR overpaid credit (< 0)
-    //   partial -> some money collected but a balance remains
-    //   unpaid  -> delivered with no payment collected at all
+    // three buckets, every record falls in exactly one:
+    //   paid    -> nothing owed (debt 0) or in credit from an overpayment (< 0)
+    //   partial -> some money in but a balance still remains
+    //   unpaid  -> delivered and nothing collected at all
     if (payment_status === 'paid') {
       conditions.push('fr.debt_amount <= 0');
     } else if (payment_status === 'partial') {
@@ -1814,8 +1764,8 @@ async function getFinancial(req, res, next) {
 }
 
 // GET /api/company/financial/pharmacy-debt/:pharmacy_id
-// Outstanding balance a single pharmacy owes THIS company. Drives the
-// "Record Payment" modal (max collectible) on the company Financial page.
+// what one pharmacy still owes THIS company. feeds the "Record Payment" modal so it can cap the
+// amount you can collect.
 async function getPharmacyDebt(req, res, next) {
   try {
     const company = await getCompany(req.user.userId);
@@ -1844,20 +1794,16 @@ async function getPharmacyDebt(req, res, next) {
 }
 
 // POST /api/company/financial/record-payment
-// Records a standalone debt settlement from a pharmacy that is NOT tied to a
-// new delivery (e.g. the pharmacy pays off its balance at the counter).
-//
-// financial_records.order_id is NOT NULL, so we create a zero-value "payment
-// order" (total_amount = 0, status = delivered) and attach one financial_record
-// to it with order_total = 0 and paid_amount = amount. The generated column
-// debt_amount = order_total - paid_amount = -amount, so
-// v_pharmacy_debts.total_debt = SUM(debt_amount) drops by exactly `amount` while
-// total_billed (SUM order_total) is unchanged — a payment is cash in, not a sale.
-//
-// NOTE: this intentionally differs from the original spec draft (order_total =
-// current_debt), which would have ADDED current_debt to total_billed and left
-// debt_amount = current_debt - amount, inflating the running balance by
-// current_debt. order_total = 0 is the only value that nets the books correctly.
+// logs a debt payment that isn't tied to a delivery - e.g. the pharmacy just pays down its
+// balance at the counter.
+// the catch is financial_records.order_id is NOT NULL, so we spin up a throwaway zero-value
+// "payment order" (total 0, status delivered) and hang a financial_record off it with
+// order_total = 0 and paid_amount = amount. debt_amount is generated as (order_total - paid),
+// so it comes out -amount, which drops v_pharmacy_debts.total_debt by exactly `amount` while
+// total_billed stays put - a payment is cash in, not a new sale.
+// (early draft used order_total = current_debt instead, which double-counted: it padded
+// total_billed and left debt = current_debt - amount, inflating the running balance. 0 is the
+// only value that keeps the books straight.)
 async function recordPayment(req, res, next) {
   let conn;
   try {
@@ -1881,8 +1827,8 @@ async function recordPayment(req, res, next) {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    // Same serialization guard as deliverOrder: hold concurrent settlements for
-    // this pharmacy so the outstanding-debt read below cannot go stale.
+    // same lock as deliverOrder - serialize settlements for this pharmacy so the debt read
+    // below can't go stale under a concurrent payment/delivery
     await conn.query('SELECT id FROM pharmacies WHERE id = ? FOR UPDATE', [
       pharmacyId,
     ]);
@@ -1914,7 +1860,7 @@ async function recordPayment(req, res, next) {
       });
     }
 
-    // Zero-value payment order to satisfy financial_records.order_id NOT NULL.
+    // the throwaway zero-value order just so financial_records.order_id has something to point at
     const [orderResult] = await conn.query(
       `INSERT INTO orders
          (pharmacy_id, company_id, status, total_amount, paid_amount, notes)
@@ -1923,7 +1869,7 @@ async function recordPayment(req, res, next) {
     );
     const orderId = orderResult.insertId;
 
-    // order_total = 0, paid_amount = amount  =>  debt_amount = -amount.
+    // order_total 0 + paid_amount amount => debt_amount lands at -amount, which is what nets the debt down
     await conn.query(
       `INSERT INTO financial_records
          (order_id, pharmacy_id, company_id, order_total, paid_amount, previous_debt, collected_at)
@@ -1949,7 +1895,7 @@ async function recordPayment(req, res, next) {
       try {
         await conn.rollback();
       } catch {
-        /* ignore rollback failure */
+        // already failing, nothing useful to do if the rollback also fails
       }
       conn.release();
     }
@@ -1957,14 +1903,10 @@ async function recordPayment(req, res, next) {
   }
 }
 
-// ============================================================
-//  MARKET (view only)
-// ============================================================
-
-// GET /api/company/market
+// GET /api/company/market - read-only. companies get to browse the whole market, their own
+// products and competitors' alike.
 async function getMarket(req, res, next) {
   try {
-    // Company can view the whole marketplace (own + competitors).
     const { search, company_id, type_id, category_id } = req.query;
     const page = toInt(req.query.page, 1);
     const limit = toInt(req.query.limit, 20);
@@ -2018,6 +1960,7 @@ async function getMarket(req, res, next) {
       [...params, limit, offset]
     );
 
+    // flatten the discount subquery into a boolean for the card
     for (const p of products) {
       p.has_bulk_discount = Number(p.bulk_discount_count) > 0;
     }

@@ -11,7 +11,7 @@ import DateRangePicker from "@/components/ui/date-range-picker";
 
 const PLACEHOLDER = "https://placehold.co/400x400/166534/ffffff?text=Product";
 
-// Tabs map to one or more backend statuses (filtered client-side).
+// each tab covers one or more backend statuses, filtered on the client
 const TABS = [
   { value: "pending", label: "Pending", statuses: ["pending"] },
   { value: "accepted", label: "Accepted", statuses: ["accepted"] },
@@ -60,7 +60,7 @@ export default function Orders() {
     const active = TABS.find((t) => t.value === tab);
     return orders.filter((o) => {
       if (active?.statuses && !active.statuses.includes(o.status)) return false;
-      // created_at carries a time component, so compare on the date prefix.
+      // created_at has a time on it, so compare just the date portion
       const day = o.created_at ? String(o.created_at).slice(0, 10) : "";
       if (from && day && day < from) return false;
       if (to && day && day > to) return false;
@@ -161,7 +161,7 @@ export default function Orders() {
   );
 }
 
-/** Order summary card. */
+// order summary card
 function OrderCard({ order, index, onView }) {
   return (
     <motion.div
@@ -216,7 +216,7 @@ function OrderCard({ order, index, onView }) {
   );
 }
 
-/** Slide-over with items, timeline, and (when eligible) a rating form. */
+// slide-over panel showing items, the timeline, and a rating form once it's eligible
 function DetailPanel({ orderId, onClose, onRated }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -378,7 +378,7 @@ function DetailPanel({ orderId, onClose, onRated }) {
   );
 }
 
-/** Chronological status log. */
+// the status history in order
 function Timeline({ log, createdAt }) {
   const entries = [
     { status: "pending", changed_at: createdAt },
@@ -410,7 +410,7 @@ function Timeline({ log, createdAt }) {
   );
 }
 
-/** Post-delivery rating form: one star input per product + one for the driver. */
+// after delivery they rate each product plus the driver, one star input each
 function RatingSection({ order, onRated, onClose }) {
   const products = useMemo(() => {
     const seen = new Map();
@@ -500,7 +500,7 @@ function RatingSection({ order, onRated, onClose }) {
   );
 }
 
-/** Interactive 1–5 star picker. */
+// clickable 1-5 star picker
 function StarInput({ value, onChange }) {
   const [hover, setHover] = useState(0);
   return (

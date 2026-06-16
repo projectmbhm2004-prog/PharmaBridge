@@ -19,7 +19,7 @@ import DashboardLayout from "@/components/shared/DashboardLayout";
 import StatusBadge from "@/components/shared/StatusBadge";
 import DateRangePicker from "@/components/ui/date-range-picker";
 
-// Tabs map to one or more backend statuses (filtered client-side).
+// each tab covers one or more backend statuses, filtered on the client
 const TABS = [
   { value: "pending", label: "Pending", statuses: ["pending"] },
   { value: "accepted", label: "Accepted", statuses: ["accepted"] },
@@ -86,8 +86,8 @@ export default function Orders() {
     try {
       await api.patch(`/driver/orders/${id}/accept`);
       toast.success("Order accepted.");
-      // Acceptance keeps the order in 'accepted' status; take the driver
-      // straight into the delivery wizard (step 1 = warehouse pickup).
+      // accepting leaves it in 'accepted', so just drop them straight into the delivery
+      // wizard at step 1 (warehouse pickup)
       navigate(`/driver/delivery/${id}`);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to accept order.");
@@ -192,7 +192,7 @@ export default function Orders() {
   );
 }
 
-/** Order summary card with status-driven actions. */
+// order summary card, the action buttons depend on the status
 function OrderCard({ order, index, busy, onAccept, onReject, onContinue }) {
   const inProgress = IN_PROGRESS.includes(order.status);
   const completed = COMPLETED.includes(order.status);
@@ -285,7 +285,7 @@ function OrderCard({ order, index, busy, onAccept, onReject, onContinue }) {
   );
 }
 
-/** Reject modal — rejection reason is mandatory. */
+// reject modal - they have to give a reason here
 function RejectModal({ orderId, onClose, onRejected }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");

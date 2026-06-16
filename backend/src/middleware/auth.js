@@ -1,29 +1,16 @@
-// ============================================================
-//  Authentication middleware — JWT verification
-// ============================================================
-// Extracts the Bearer token, verifies it with JWT_SECRET, and
-// attaches the decoded payload to req.user.
-// ============================================================
+// auth middleware - pull the Bearer token, verify it, hang the payload off req.user.
 
 const jwt = require('jsonwebtoken');
 
 const pool = require('../config/db');
 
-/**
- * Protect a route: requires a valid Bearer JWT AND a still-active account.
- * On success: req.user = { userId, role, email }.
- * On failure: 401 { success: false, message: "Unauthorized" }.
- *
- * The JWT is valid for 7 days. Without a live status check, a company /
- * pharmacy / driver that was deactivated (or a driver that was fired)
- * mid-session would keep full API access until the token expired — making
- * the admin "deactivate" and company "fire" actions effectively useless for
- * the duration of the token. We therefore re-read users.is_active on every
- * authenticated request (an indexed primary-key lookup) and reject the
- * request the moment the account is no longer active. The frontend already
- * treats any 401 as "session ended" and bounces to /login, so a deactivated
- * user is logged out on their very next request.
- */
+// gate a route behind a valid JWT AND an account that's still active.
+// success -> req.user = { userId, role, email }, failure -> 401.
+// the token lives 7 days, so without a fresh status check a deactivated company/pharmacy
+// or a fired driver would keep full access until it expired - making admin "deactivate" and
+// company "fire" basically toothless. so we re-read users.is_active on every request (cheap,
+// it's a PK lookup) and bounce the moment they're not active. the frontend treats any 401 as
+// "session over" and kicks to /login, so they're logged out on their very next call.
 async function auth(req, res, next) {
   try {
     const header = req.headers.authorization || '';
@@ -43,8 +30,7 @@ async function auth(req, res, next) {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Live account-status check (see note above). Mirrors the login gate so a
-    // token cannot outlive a deactivation / firing.
+    // the live is_active check from the note above - mirrors the login gate
     const [rows] = await pool.query(
       'SELECT is_active FROM users WHERE id = ? LIMIT 1',
       [decoded.userId]
@@ -63,7 +49,7 @@ async function auth(req, res, next) {
 
     return next();
   } catch (err) {
-    // Invalid / expired token — never leak details.
+    // bad or expired token - stay vague, don't hand attackers details
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 }

@@ -1,11 +1,4 @@
-// ============================================================
-//  Auth routes  →  mounted at /api/auth
-// ============================================================
-//   POST /register        new registration (company/pharmacy/driver)
-//   POST /login           login
-//   GET  /me              current user data        (protected)
-//   GET  /verify-email    email verification via ?token=
-// ============================================================
+// /api/auth - register, login, /me (protected), and email verification via ?token=
 
 const express = require('express');
 

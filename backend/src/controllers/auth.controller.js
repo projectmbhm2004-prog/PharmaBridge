@@ -1,10 +1,6 @@
-// ============================================================
-//  Auth controller
-// ============================================================
-//  register / verify-email / login / me
-//  All handlers are wrapped in try/catch and forward errors via
-//  next(err). DB mutations run inside a transaction with rollback.
-// ============================================================
+// auth controller - register / verify-email / login / me.
+// every handler is try/catch -> next(err), and the register insert runs in a transaction
+// so a half-created user/profile rolls back cleanly.
 
 const crypto = require('crypto');
 const dns = require('dns');
@@ -21,15 +17,7 @@ const JWT_EXPIRY = '7d';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ROLES = ['company', 'pharmacy', 'driver'];
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-
-/**
- * Validate password strength.
- * @param {string} password
- * @returns {string|null} an error message, or null when valid
- */
+// returns an error string if the password is too weak, or null if it's fine
 function validatePassword(password) {
   if (!password || typeof password !== 'string' || password.length < 8) {
     return 'Password must be at least 8 characters long';
@@ -49,11 +37,8 @@ function validatePassword(password) {
   return null;
 }
 
-/**
- * Confirm the email's domain can actually receive mail (has MX records).
- * @param {string} email
- * @returns {Promise<boolean>}
- */
+// quick sanity check that the email domain can actually receive mail (has MX records),
+// stops a lot of typo'd / fake signups before we bother sending anything
 async function domainHasMx(email) {
   const domain = email.split('@')[1];
   if (!domain) return false;
@@ -61,15 +46,13 @@ async function domainHasMx(email) {
     const records = await dns.promises.resolveMx(domain);
     return Array.isArray(records) && records.length > 0;
   } catch (err) {
-    // DNS unavailable in this environment — skip the check
+    // no DNS in this env (CI, offline dev) - don't block signup over it, just let it through
     console.warn('[auth] DNS MX check skipped:', err.message);
     return true;
   }
 }
 
-// ------------------------------------------------------------
 // POST /api/auth/register
-// ------------------------------------------------------------
 async function register(req, res, next) {
   let conn;
   try {
@@ -77,46 +60,43 @@ async function register(req, res, next) {
       email,
       password,
       role,
-      // company / pharmacy
+      // company / pharmacy fields
       name,
       phone,
       address,
       description,
       owner_name,
-      // driver
+      // driver-only fields
       company_id,
       full_name,
       vehicle_info,
     } = req.body || {};
 
-    // Normalised, trimmed copies of the two required public-profile fields.
+    // trim these two up front, they're required for everyone and shown publicly
     const descriptionTrimmed =
       typeof description === 'string' ? description.trim() : '';
     const addressTrimmed = typeof address === 'string' ? address.trim() : '';
 
     console.log('[register] called for email:', email, 'role:', role)
 
-    // 1. Email format
+    // bail early on anything obviously bad before we hit the DB
     if (!email || !EMAIL_REGEX.test(email)) {
       return res
         .status(400)
         .json({ success: false, message: 'Invalid email format' });
     }
 
-    // 2. DNS / MX check
     if (!(await domainHasMx(email))) {
       return res
         .status(400)
         .json({ success: false, message: 'This email domain does not exist' });
     }
 
-    // 3. Password strength
     const pwError = validatePassword(password);
     if (pwError) {
       return res.status(400).json({ success: false, message: pwError });
     }
 
-    // 4. Role validation
     if (!role || !VALID_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
@@ -124,7 +104,7 @@ async function register(req, res, next) {
       });
     }
 
-    // Role-specific required fields (validate before touching the DB)
+    // role-specific required fields
     if (role === 'company' || role === 'pharmacy') {
       if (!name) {
         return res
@@ -141,8 +121,7 @@ async function register(req, res, next) {
       }
     }
 
-    // Description + Address are required & publicly shown for every role
-    // (company, pharmacy, driver).
+    // description + address are required for every role since they show up publicly
     if (!descriptionTrimmed) {
       return res
         .status(400)
@@ -160,7 +139,7 @@ async function register(req, res, next) {
       });
     }
 
-    // 5. Email uniqueness
+    // is this email already taken?
     const [existing] = await pool.query(
       'SELECT id FROM users WHERE email = ? LIMIT 1',
       [email]
@@ -171,7 +150,7 @@ async function register(req, res, next) {
         .json({ success: false, message: 'Email is already registered' });
     }
 
-    // For drivers, make sure the chosen company exists (before tx)
+    // driver picks a company to apply to - make sure it actually exists before we start the tx
     let companyRow = null;
     if (role === 'driver') {
       const [companies] = await pool.query(
@@ -186,13 +165,12 @@ async function register(req, res, next) {
       companyRow = companies[0];
     }
 
-    // 6. Hash password
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    // 7. Verification token
+    // random token they'll click in the verification email
     const token = crypto.randomBytes(32).toString('hex');
 
-    // 8. Transaction: create user + role profile
+    // user row + the role profile row go in together, all-or-nothing
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
@@ -204,7 +182,7 @@ async function register(req, res, next) {
     );
     const userId = userResult.insertId;
 
-    // Display name used in notifications / emails
+    // what we'll call them in notifications / emails (drivers use full_name, set below)
     let displayName = name;
 
     if (role === 'company') {
@@ -231,12 +209,12 @@ async function register(req, res, next) {
       );
     }
 
-    // 9. Commit
     await conn.commit();
     conn.release();
     conn = null;
 
-    // 10. Verification email (best-effort — don't fail the request on email error)
+    // send the verification email, but best-effort - if mail is down we still keep the account,
+    // they just won't get the link (and we log why below)
     const frontendUrl = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
     const verifyUrl = `${frontendUrl}/verify-email?token=${token}`;
     try {
@@ -260,7 +238,7 @@ async function register(req, res, next) {
             </p>
           </div>`,
       });
-      // Diagnostic: confirm nodemailer actually accepted the message.
+      // log what nodemailer reported back, saved us hours chasing "email not arriving" reports
       console.log('[auth] verification email sent:', {
         messageId: info && info.messageId,
         accepted: info && info.accepted,
@@ -271,7 +249,6 @@ async function register(req, res, next) {
       console.error('[auth] verification email failed:', mailErr.message);
     }
 
-    // 11. Done
     return res.status(201).json({
       success: true,
       message:
@@ -290,23 +267,20 @@ async function register(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // GET /api/auth/verify-email?token=
-// ------------------------------------------------------------
 async function verifyEmail(req, res, next) {
   try {
     const { token } = req.query;
 
     console.log('[verify-email] called for token:', token?.substring(0, 10))
 
-    // 1. token present
     if (!token) {
       return res
         .status(400)
         .json({ success: false, message: 'Verification token is required' });
     }
 
-    // 2 + 3. find user by token
+    // look the user up by the token - a bad/used token just won't match
     const [rows] = await pool.query(
       'SELECT id, role FROM users WHERE email_verification_token = ? LIMIT 1',
       [token]
@@ -321,7 +295,7 @@ async function verifyEmail(req, res, next) {
     const userId = rows[0].id;
     const role = rows[0].role;
 
-    // 4. mark verified, clear token
+    // flip them to verified and wipe the token so it can't be reused
     await pool.query(
       `UPDATE users
           SET email_verified = TRUE, email_verification_token = NULL
@@ -329,7 +303,8 @@ async function verifyEmail(req, res, next) {
       [userId]
     );
 
-    // 4b. Notify the right recipient now that the email is verified.
+    // now that the email's confirmed, ping whoever needs to approve them.
+    // company/pharmacy -> the admin, driver -> the company they applied to.
     try {
       if (role === 'company' || role === 'pharmacy') {
         console.log('[verify-email] sending notification to admin')
@@ -377,13 +352,13 @@ async function verifyEmail(req, res, next) {
         }
       }
     } catch (notifyErr) {
+      // notification is a nice-to-have, don't fail verification if it blows up
       console.error(
         '[auth] verification notification failed:',
         notifyErr.message
       );
     }
 
-    // 5. done
     return res.json({
       success: true,
       message: 'Email verified successfully. Your account is pending approval.',
@@ -393,34 +368,30 @@ async function verifyEmail(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
 // POST /api/auth/login
-// ------------------------------------------------------------
 async function login(req, res, next) {
   try {
     const { email, password } = req.body || {};
 
-    // 1. presence
     if (!email || !password) {
       return res
         .status(400)
         .json({ success: false, message: 'Email and password are required' });
     }
 
-    // 2. find user
     const [rows] = await pool.query(
       `SELECT id, email, password_hash, role, is_active, email_verified
          FROM users WHERE email = ? LIMIT 1`,
       [email]
     );
     if (rows.length === 0) {
+      // same generic message whether the email or the password is wrong, don't leak which
       return res
         .status(401)
         .json({ success: false, message: 'Invalid email or password' });
     }
     const user = rows[0];
 
-    // 3. password check
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
       return res
@@ -428,7 +399,7 @@ async function login(req, res, next) {
         .json({ success: false, message: 'Invalid email or password' });
     }
 
-    // 4. email verification (admins exempt)
+    // admins skip email verification, everyone else has to have clicked the link
     if (user.role !== 'admin' && !user.email_verified) {
       return res.status(403).json({
         success: false,
@@ -436,14 +407,14 @@ async function login(req, res, next) {
       });
     }
 
-    // 5. account active / approved
+    // verified but not yet approved by admin/company
     if (!user.is_active) {
       return res
         .status(403)
         .json({ success: false, message: 'Your account is pending approval' });
     }
 
-    // 6. driver not fired
+    // a fired driver keeps a valid login otherwise, so block them here too
     if (user.role === 'driver') {
       const [drivers] = await pool.query(
         'SELECT is_fired FROM drivers WHERE user_id = ? LIMIT 1',
@@ -457,7 +428,6 @@ async function login(req, res, next) {
       }
     }
 
-    // 7. sign JWT
     const tokenPayload = {
       userId: user.id,
       role: user.role,
@@ -467,7 +437,7 @@ async function login(req, res, next) {
       expiresIn: JWT_EXPIRY,
     });
 
-    // 8 + 9. respond (never leak password_hash / verification token)
+    // only hand back the token + role, never the hash or the verification token
     return res.json({
       success: true,
       message: 'Login successful',
@@ -478,9 +448,7 @@ async function login(req, res, next) {
   }
 }
 
-// ------------------------------------------------------------
-// GET /api/auth/me  (protected)
-// ------------------------------------------------------------
+// GET /api/auth/me (protected) - returns the role-specific profile for the logged-in user
 async function me(req, res, next) {
   try {
     const { userId, role } = req.user;

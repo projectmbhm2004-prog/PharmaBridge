@@ -41,8 +41,8 @@ export default function Reports() {
   const [recentOrders, setRecentOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
 
-  // Dataset-wide figures: KPIs, leaderboards, top products. These don't move
-  // with the Recent Orders date filter, so they're fetched once.
+  // the whole-dataset numbers (KPIs, leaderboards, top products) don't change with the Recent
+  // Orders date filter, so we just load them once
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -66,9 +66,9 @@ export default function Reports() {
     })();
   }, []);
 
-  // Recent Orders re-fetches whenever the date range changes. `to` is widened
-  // to end-of-day so the chosen day is included (the API compares created_at
-  // <= the bound, and timestamps carry a time component).
+  // Recent Orders reloads whenever the date range changes. we push `to` out to end-of-day so
+  // the selected day is actually included - the API does created_at <= bound and the timestamps
+  // carry a time, otherwise the last day gets dropped
   useEffect(() => {
     (async () => {
       setOrdersLoading(true);
@@ -163,7 +163,7 @@ export default function Reports() {
             ))}
       </div>
 
-      {/* Financial leaderboards — receivables risk vs. revenue concentration */}
+      {/* the two money leaderboards - who owes us most vs. who brings in most */}
       <div className="mb-8 grid gap-4 lg:grid-cols-2">
         <Leaderboard
           title="Top 5 Pharmacies by Debt"
@@ -331,7 +331,7 @@ export default function Reports() {
   );
 }
 
-// A ranked card list (debtors / companies) with loading and empty states.
+// ranked card list used for both the debtors and the companies boards, handles loading/empty
 function Leaderboard({ title, icon: Icon, iconTint, loading, items, empty, renderItem }) {
   return (
     <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
