@@ -356,7 +356,9 @@ function stockBadge(qty) {
 
 function ProductCard({ product, index, onView, onEdit, onDelete }) {
   const images = Array.isArray(product.images) ? product.images : [];
-  const main = images.find((im) => im.sort_order === 0) || images[0];
+  // always render exactly the first image, ignoring sort_order (some products
+  // have multiple images sharing sort_order=0)
+  const main = images[0];
   const hasOffer = !!product.has_offer && product.offer_price != null;
 
   return (
@@ -368,15 +370,21 @@ function ProductCard({ product, index, onView, onEdit, onDelete }) {
       className="flex cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm transition duration-150 hover:-translate-y-0.5 hover:shadow-md"
     >
       <div className="relative h-40 w-full overflow-hidden bg-slate-100">
-        <img
-          src={main?.url || PLACEHOLDER}
-          alt={product.name}
-          loading="lazy"
-          onError={(e) => {
-            e.currentTarget.src = PLACEHOLDER;
-          }}
-          className="h-full w-full object-cover rounded-t-xl"
-        />
+        {main?.url ? (
+          <img
+            src={main.url}
+            alt={product.name}
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.src = PLACEHOLDER;
+            }}
+            className="h-full w-full object-cover rounded-t-xl"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-slate-300">
+            <PackageOpen size={32} />
+          </div>
+        )}
         {hasOffer && (
           <span className="absolute right-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
             OFFER

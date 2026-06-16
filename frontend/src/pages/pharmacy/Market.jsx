@@ -521,6 +521,10 @@ function ProductCard({ product, index, adding, onAdd, onOpen }) {
   const hasOffer = !!product.has_offer && product.offer_price != null;
   const lowStock =
     product.quantity_in_stock != null && product.quantity_in_stock < 10;
+  // render exactly one image: the first of the array (ignoring sort_order, since
+  // some products have multiple images sharing sort_order=0), falling back to main_image
+  const images = Array.isArray(product.images) ? product.images : [];
+  const mainImage = images[0]?.url || product.main_image;
 
   return (
     <motion.div
@@ -531,15 +535,21 @@ function ProductCard({ product, index, adding, onAdd, onOpen }) {
       className="flex cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm transition duration-150 hover:-translate-y-0.5 hover:shadow-md"
     >
       <div className="relative aspect-square overflow-hidden bg-slate-100">
-        <img
-          src={product.main_image || PLACEHOLDER}
-          alt={product.name}
-          loading="lazy"
-          onError={(e) => {
-            e.currentTarget.src = PLACEHOLDER;
-          }}
-          className="h-full w-full object-cover"
-        />
+        {mainImage ? (
+          <img
+            src={mainImage}
+            alt={product.name}
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.src = PLACEHOLDER;
+            }}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-slate-300">
+            <PackageOpen size={32} />
+          </div>
+        )}
         {product.company_name && (
           <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white backdrop-blur">
             {product.company_name}
