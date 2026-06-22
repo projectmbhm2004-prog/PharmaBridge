@@ -240,7 +240,7 @@ p {
   }
 
   @page {
-    size: A4 landscape;
+    size: A4 portrait;
     margin: 1.4cm 1.4cm 1.8cm;
   }
 
@@ -365,7 +365,7 @@ p {
   .print-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 10.5px;
+    font-size: 10px;
   }
   .print-table thead {
     display: table-header-group; /* repeat header on every page */
