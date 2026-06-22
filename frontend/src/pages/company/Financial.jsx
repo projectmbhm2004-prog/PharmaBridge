@@ -21,7 +21,6 @@ const EMPTY_FILTERS = {
   from: "",
   to: "",
   payment_status: "",
-  product: "",
 };
 
 const PAYMENT_STATUSES = [
@@ -87,23 +86,12 @@ export default function Financial() {
     }
   }
 
-  // product is a client-side filter, so it's deliberately left out of the deps — changing it
-  // must not trigger a refetch (no new API call)
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.pharmacy_id, filters.from, filters.to, filters.payment_status]);
 
-  // client-side product filter over the already-loaded records
-  const visibleRecords = useMemo(() => {
-    if (!filters.product) return records;
-    const search = filters.product.toLowerCase();
-    return records.filter(
-      (r) => r.product_names && r.product_names.toLowerCase().includes(search)
-    );
-  }, [records, filters.product]);
-
-  // when one pharmacy is selected, sum the visible records into a filtered summary —
+  // when one pharmacy is selected, sum the loaded records into a filtered summary —
   // all client-side off the loaded data, no extra API call
   const selectedPharmacy = filters.pharmacy_id
     ? pharmacies.find((p) => String(p.id) === String(filters.pharmacy_id))
@@ -111,7 +99,7 @@ export default function Financial() {
 
   const filteredTotals = useMemo(() => {
     if (!filters.pharmacy_id) return null;
-    return visibleRecords.reduce(
+    return records.reduce(
       (acc, r) => ({
         billed: acc.billed + (Number(r.order_total) || 0),
         paid: acc.paid + (Number(r.paid_amount) || 0),
@@ -119,7 +107,7 @@ export default function Financial() {
       }),
       { billed: 0, paid: 0, debt: 0 }
     );
-  }, [filters.pharmacy_id, visibleRecords]);
+  }, [filters.pharmacy_id, records]);
 
   // totals across every pharmacy (summary is the v_pharmacy_debts rows)
   const totals = summary.reduce(
@@ -138,8 +126,7 @@ export default function Financial() {
     filters.pharmacy_id ||
     filters.from ||
     filters.to ||
-    filters.payment_status ||
-    filters.product;
+    filters.payment_status;
 
   const inputClass =
     "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
@@ -278,19 +265,6 @@ export default function Financial() {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-text-secondary">Product</label>
-          <input
-            type="text"
-            value={filters.product}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, product: e.target.value }))
-            }
-            placeholder="Filter by product..."
-            className={inputClass}
-          />
-        </div>
-
         {hasFilters && (
           <button
             onClick={() => setFilters(EMPTY_FILTERS)}
@@ -326,7 +300,7 @@ export default function Financial() {
                   ))}
                 </tr>
               ))
-            ) : visibleRecords.length === 0 ? (
+            ) : records.length === 0 ? (
               <tr>
                 <td colSpan={COLS} className="px-4 py-16">
                   <div className="flex flex-col items-center justify-center text-center text-text-secondary">
@@ -336,7 +310,7 @@ export default function Financial() {
                 </td>
               </tr>
             ) : (
-              visibleRecords.map((r) => {
+              records.map((r) => {
                 const debt = Number(r.debt_amount) || 0;
                 const isCredit = debt < 0;
                 return (

@@ -14,7 +14,6 @@ const EMPTY_FILTERS = {
   from: "",
   to: "",
   payment_status: "",
-  product: "",
 };
 
 const PAYMENT_STATUSES = [
@@ -95,12 +94,6 @@ export default function Financial() {
       if (filters.payment_status && paymentStatusOf(r) !== filters.payment_status) {
         return false;
       }
-      if (filters.product) {
-        const search = filters.product.toLowerCase();
-        if (!r.product_names || !r.product_names.toLowerCase().includes(search)) {
-          return false;
-        }
-      }
       return true;
     });
   }, [records, filters]);
@@ -127,8 +120,7 @@ export default function Financial() {
     filters.company_id ||
     filters.from ||
     filters.to ||
-    filters.payment_status ||
-    filters.product;
+    filters.payment_status;
 
   const inputClass =
     "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
@@ -209,19 +201,6 @@ export default function Financial() {
               </option>
             ))}
           </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-text-secondary">Product</label>
-          <input
-            type="text"
-            value={filters.product}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, product: e.target.value }))
-            }
-            placeholder="Filter by product..."
-            className={inputClass}
-          />
         </div>
 
         {hasFilters && (

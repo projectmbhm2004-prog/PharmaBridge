@@ -10,6 +10,7 @@ import {
   Check,
   Truck,
   CheckCircle2,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,6 +43,7 @@ const COMPLETED = ["delivered", "partially_delivered"];
 export default function Orders() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("all");
+  const [search, setSearch] = useState(""); // order id / pharmacy name
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [orders, setOrders] = useState([]);
@@ -70,16 +72,27 @@ export default function Orders() {
 
   const visible = useMemo(() => {
     const active = TABS.find((t) => t.value === tab);
+    const term = search.trim().toLowerCase();
     return orders.filter((o) => {
       if (active?.statuses && !active.statuses.includes(o.status)) return false;
+      if (term) {
+        const haystack = `#${o.id} ${o.pharmacy_name ?? ""}`.toLowerCase();
+        if (!haystack.includes(term)) return false;
+      }
       const day = o.created_at ? String(o.created_at).slice(0, 10) : "";
       if (from && day && day < from) return false;
       if (to && day && day > to) return false;
       return true;
     });
-  }, [orders, tab, from, to]);
+  }, [orders, tab, search, from, to]);
 
-  const hasDateFilter = from || to;
+  const hasExtraFilters = search || from || to;
+
+  function clearExtraFilters() {
+    setSearch("");
+    setFrom("");
+    setTo("");
+  }
 
   async function accept(id) {
     setBusyId(id);
@@ -97,6 +110,46 @@ export default function Orders() {
 
   return (
     <DashboardLayout role="driver" title="My Assigned Orders">
+      {/* Search + date filters */}
+      <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-1 flex-col gap-1 min-w-50">
+          <label className="text-xs font-medium text-text-secondary">Search</label>
+          <div className="relative">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Order # or pharmacy name…"
+              className="w-full rounded-lg border border-border px-3 py-2 pl-9 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-text-secondary">Date range</label>
+          <DateRangePicker
+            from={from}
+            to={to}
+            onSelect={({ from, to }) => {
+              setFrom(toISODate(from));
+              setTo(toISODate(to));
+            }}
+            placeholder="From – To"
+          />
+        </div>
+        {hasExtraFilters && (
+          <button
+            onClick={clearExtraFilters}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-slate-50"
+          >
+            <X size={15} /> Clear
+          </button>
+        )}
+      </div>
+
       {/* Status filter tabs */}
       <div className="mb-5 flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map((t) => {
@@ -121,33 +174,6 @@ export default function Orders() {
             </button>
           );
         })}
-      </div>
-
-      {/* Date range */}
-      <div className="mb-5 flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-text-secondary">Date range</label>
-          <DateRangePicker
-            from={from}
-            to={to}
-            onSelect={({ from, to }) => {
-              setFrom(toISODate(from));
-              setTo(toISODate(to));
-            }}
-            placeholder="From – To"
-          />
-        </div>
-        {hasDateFilter && (
-          <button
-            onClick={() => {
-              setFrom("");
-              setTo("");
-            }}
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-slate-50"
-          >
-            <X size={15} /> Clear
-          </button>
-        )}
       </div>
 
       {loading ? (
