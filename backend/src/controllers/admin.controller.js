@@ -810,7 +810,7 @@ function updatePharmacy(req, res, next) {
 // GET /api/admin/orders
 async function getOrders(req, res, next) {
   try {
-    const { status, company_id, pharmacy_id, from, to, search, pharmacy, company } =
+    const { status, company_id, pharmacy_id, from, to, search, pharmacy, company, product_name } =
       req.query;
     const page = toInt(req.query.page, 1);
     const limit = toInt(req.query.limit, 20);
@@ -853,6 +853,18 @@ async function getOrders(req, res, next) {
     if (company) {
       conditions.push('c.name LIKE ?');
       params.push(`%${company}%`);
+    }
+    // match orders that contain a product whose name includes the search text
+    if (product_name) {
+      conditions.push(
+        `EXISTS (
+           SELECT 1 FROM order_items oi
+           JOIN products p ON p.id = oi.product_id
+          WHERE oi.order_id = o.id
+            AND p.name LIKE CONCAT('%', ?, '%')
+         )`
+      );
+      params.push(product_name);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

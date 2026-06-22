@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Wallet,
   TrendingUp,
@@ -16,7 +16,13 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import DateRangePicker from "@/components/ui/date-range-picker";
 
 const COLS = 7;
-const EMPTY_FILTERS = { pharmacy_id: "", from: "", to: "", payment_status: "" };
+const EMPTY_FILTERS = {
+  pharmacy_id: "",
+  from: "",
+  to: "",
+  payment_status: "",
+  product: "",
+};
 
 const PAYMENT_STATUSES = [
   { value: "", label: "All" },
@@ -81,10 +87,39 @@ export default function Financial() {
     }
   }
 
+  // product is a client-side filter, so it's deliberately left out of the deps — changing it
+  // must not trigger a refetch (no new API call)
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters.pharmacy_id, filters.from, filters.to, filters.payment_status]);
+
+  // client-side product filter over the already-loaded records
+  const visibleRecords = useMemo(() => {
+    if (!filters.product) return records;
+    const search = filters.product.toLowerCase();
+    return records.filter(
+      (r) => r.product_names && r.product_names.toLowerCase().includes(search)
+    );
+  }, [records, filters.product]);
+
+  // when one pharmacy is selected, sum the visible records into a filtered summary —
+  // all client-side off the loaded data, no extra API call
+  const selectedPharmacy = filters.pharmacy_id
+    ? pharmacies.find((p) => String(p.id) === String(filters.pharmacy_id))
+    : null;
+
+  const filteredTotals = useMemo(() => {
+    if (!filters.pharmacy_id) return null;
+    return visibleRecords.reduce(
+      (acc, r) => ({
+        billed: acc.billed + (Number(r.order_total) || 0),
+        paid: acc.paid + (Number(r.paid_amount) || 0),
+        debt: acc.debt + (Number(r.debt_amount) || 0),
+      }),
+      { billed: 0, paid: 0, debt: 0 }
+    );
+  }, [filters.pharmacy_id, visibleRecords]);
 
   // totals across every pharmacy (summary is the v_pharmacy_debts rows)
   const totals = summary.reduce(
@@ -100,7 +135,11 @@ export default function Financial() {
   const debtors = summary.filter((s) => Number(s.total_debt) > 0);
 
   const hasFilters =
-    filters.pharmacy_id || filters.from || filters.to || filters.payment_status;
+    filters.pharmacy_id ||
+    filters.from ||
+    filters.to ||
+    filters.payment_status ||
+    filters.product;
 
   const inputClass =
     "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
@@ -128,6 +167,20 @@ export default function Financial() {
           tone="red"
         />
       </div>
+
+      {/* Filtered summary — only while a single pharmacy is selected */}
+      {selectedPharmacy && filteredTotals && (
+        <div className="mb-5">
+          <h2 className="mb-2 px-1 text-sm font-semibold text-text-primary">
+            {selectedPharmacy.name} — Summary
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MiniCard label="Total Billed" value={filteredTotals.billed} />
+            <MiniCard label="Paid" value={filteredTotals.paid} />
+            <MiniCard label="Debt" value={filteredTotals.debt} />
+          </div>
+        </div>
+      )}
 
       {/* Outstanding balances — record a payment not tied to a new order */}
       {!loading && debtors.length > 0 && (
@@ -225,6 +278,19 @@ export default function Financial() {
           </select>
         </div>
 
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-text-secondary">Product</label>
+          <input
+            type="text"
+            value={filters.product}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, product: e.target.value }))
+            }
+            placeholder="Filter by product..."
+            className={inputClass}
+          />
+        </div>
+
         {hasFilters && (
           <button
             onClick={() => setFilters(EMPTY_FILTERS)}
@@ -260,7 +326,7 @@ export default function Financial() {
                   ))}
                 </tr>
               ))
-            ) : records.length === 0 ? (
+            ) : visibleRecords.length === 0 ? (
               <tr>
                 <td colSpan={COLS} className="px-4 py-16">
                   <div className="flex flex-col items-center justify-center text-center text-text-secondary">
@@ -270,7 +336,7 @@ export default function Financial() {
                 </td>
               </tr>
             ) : (
-              records.map((r) => {
+              visibleRecords.map((r) => {
                 const debt = Number(r.debt_amount) || 0;
                 const isCredit = debt < 0;
                 return (
@@ -347,6 +413,18 @@ const TONES = {
   green: "border-green-200 bg-green-50 text-green-700",
   red: "border-red-200 bg-red-50 text-red-700",
 };
+
+// compact card for the per-pharmacy filtered summary, with a green accent border
+function MiniCard({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-100 border-l-4 border-l-primary bg-white p-3 shadow-sm">
+      <p className="text-xs font-medium text-text-secondary">{label}</p>
+      <p className="mt-0.5 truncate text-lg font-bold text-text-primary">
+        {formatCurrency(value)}
+      </p>
+    </div>
+  );
+}
 
 function SummaryCard({ icon: Icon, label, value, tone }) {
   return (

@@ -1752,7 +1752,10 @@ async function getFinancial(req, res, next) {
       `SELECT fr.*,
               ph.name AS pharmacy_name,
               o.status AS order_status,
-              o.created_at AS order_date
+              o.created_at AS order_date,
+              (SELECT GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ')
+                 FROM order_items oi JOIN products p ON p.id = oi.product_id
+                WHERE oi.order_id = fr.order_id) AS product_names
          FROM financial_records fr
          JOIN pharmacies ph ON ph.id = fr.pharmacy_id
          JOIN orders o ON o.id = fr.order_id

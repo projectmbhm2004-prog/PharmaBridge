@@ -9,7 +9,13 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import DateRangePicker from "@/components/ui/date-range-picker";
 
 const COLS = 7;
-const EMPTY_FILTERS = { company_id: "", from: "", to: "", payment_status: "" };
+const EMPTY_FILTERS = {
+  company_id: "",
+  from: "",
+  to: "",
+  payment_status: "",
+  product: "",
+};
 
 const PAYMENT_STATUSES = [
   { value: "", label: "All" },
@@ -89,12 +95,40 @@ export default function Financial() {
       if (filters.payment_status && paymentStatusOf(r) !== filters.payment_status) {
         return false;
       }
+      if (filters.product) {
+        const search = filters.product.toLowerCase();
+        if (!r.product_names || !r.product_names.toLowerCase().includes(search)) {
+          return false;
+        }
+      }
       return true;
     });
   }, [records, filters]);
 
+  // when one company is selected, sum the visible records into a filtered summary.
+  // all client-side off the already-loaded data, no extra API call.
+  const selectedCompany = filters.company_id
+    ? companies.find((c) => String(c.id) === String(filters.company_id))
+    : null;
+
+  const filteredTotals = useMemo(() => {
+    if (!filters.company_id) return null;
+    return visibleRecords.reduce(
+      (acc, r) => ({
+        spent: acc.spent + (Number(r.order_total) || 0),
+        paid: acc.paid + (Number(r.paid_amount) || 0),
+        debt: acc.debt + (Number(r.debt_amount) || 0),
+      }),
+      { spent: 0, paid: 0, debt: 0 }
+    );
+  }, [filters.company_id, visibleRecords]);
+
   const hasFilters =
-    filters.company_id || filters.from || filters.to || filters.payment_status;
+    filters.company_id ||
+    filters.from ||
+    filters.to ||
+    filters.payment_status ||
+    filters.product;
 
   const inputClass =
     "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
@@ -107,6 +141,20 @@ export default function Financial() {
         <SummaryCard icon={TrendingUp} label="Total Paid" value={totals.paid} tone="green" />
         <SummaryCard icon={AlertCircle} label="Total Debt" value={totals.debt} tone="red" />
       </div>
+
+      {/* Filtered summary — only while a single company is selected */}
+      {selectedCompany && filteredTotals && (
+        <div className="mb-5">
+          <h2 className="mb-2 px-1 text-sm font-semibold text-text-primary">
+            {selectedCompany.name} — Summary
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MiniCard label="Spent" value={filteredTotals.spent} />
+            <MiniCard label="Paid" value={filteredTotals.paid} />
+            <MiniCard label="Debt" value={filteredTotals.debt} />
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -161,6 +209,19 @@ export default function Financial() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-text-secondary">Product</label>
+          <input
+            type="text"
+            value={filters.product}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, product: e.target.value }))
+            }
+            placeholder="Filter by product..."
+            className={inputClass}
+          />
         </div>
 
         {hasFilters && (
@@ -274,6 +335,18 @@ const TONES = {
   green: "border-green-200 bg-green-50 text-green-700",
   red: "border-red-200 bg-red-50 text-red-700",
 };
+
+// compact card for the per-company filtered summary, with a green accent border
+function MiniCard({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-100 border-l-4 border-l-primary bg-white p-3 shadow-sm">
+      <p className="text-xs font-medium text-text-secondary">{label}</p>
+      <p className="mt-0.5 truncate text-lg font-bold text-text-primary">
+        {formatCurrency(value)}
+      </p>
+    </div>
+  );
+}
 
 function SummaryCard({ icon: Icon, label, value, tone }) {
   return (

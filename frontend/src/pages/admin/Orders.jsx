@@ -30,6 +30,7 @@ const EMPTY_FILTERS = {
   search: "",
   pharmacy: "",
   company: "",
+  product: "",
 };
 
 export default function Orders() {
@@ -38,6 +39,9 @@ export default function Orders() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+
+  // product search is debounced so we don't fire a request on every keystroke
+  const [debouncedProduct, setDebouncedProduct] = useState("");
 
   async function load() {
     setLoading(true);
@@ -51,6 +55,7 @@ export default function Orders() {
       if (filters.search.trim()) params.search = filters.search.trim();
       if (filters.pharmacy.trim()) params.pharmacy = filters.pharmacy.trim();
       if (filters.company.trim()) params.company = filters.company.trim();
+      if (debouncedProduct) params.product_name = debouncedProduct;
       const { data } = await api.get("/admin/orders", { params });
       setOrders(data?.data?.orders ?? []);
       setTotal(data?.data?.total ?? 0);
@@ -74,7 +79,17 @@ export default function Orders() {
     filters.search,
     filters.pharmacy,
     filters.company,
+    debouncedProduct,
   ]);
+
+  // debounce the product input 400ms before it becomes a server-side filter
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedProduct(filters.product.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [filters.product]);
 
   function update(key, value) {
     setPage(1);
@@ -88,7 +103,8 @@ export default function Orders() {
     filters.to ||
     filters.search ||
     filters.pharmacy ||
-    filters.company;
+    filters.company ||
+    filters.product;
 
   // Active filter chips (removable).
   const chips = [];
@@ -102,6 +118,8 @@ export default function Orders() {
     chips.push({ key: "pharmacy", label: `Pharmacy: ${filters.pharmacy}` });
   if (filters.company)
     chips.push({ key: "company", label: `Company: ${filters.company}` });
+  if (filters.product)
+    chips.push({ key: "product", label: `Product: ${filters.product}` });
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
@@ -194,10 +212,30 @@ export default function Orders() {
           </div>
         </div>
 
+        <div className="flex w-full flex-col gap-1 sm:w-auto">
+          <label className="text-xs font-medium text-text-secondary">Product</label>
+          <div className="relative">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+            />
+            <input
+              type="text"
+              value={filters.product}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, product: e.target.value }))
+              }
+              placeholder="Filter by product…"
+              className={`${inputClass} pl-9`}
+            />
+          </div>
+        </div>
+
         {hasFilters && (
           <button
             onClick={() => {
               setPage(1);
+              setDebouncedProduct("");
               setFilters(EMPTY_FILTERS);
             }}
             className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-slate-50"
