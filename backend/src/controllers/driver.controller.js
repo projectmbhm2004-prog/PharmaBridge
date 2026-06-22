@@ -6,6 +6,8 @@
 const pool = require('../config/db');
 const { emitToUser } = require('../services/socket.service');
 const { AppError } = require('../middleware/errorHandler');
+// settlement money math lives in utils/settlement.js so it can be unit-tested directly
+const settlement = require('../utils/settlement');
 
 // grab the driver row for this user. throws 404 if there's no driver profile,
 // 403 if they've been fired (don't let a fired driver poke around)
@@ -489,11 +491,11 @@ async function deliverOrder(req, res, next) {
         [baseUnitsRejected, orderItem.product_id, order.company_id]
       );
 
-      deduction += qtyRejected * Number(orderItem.unit_price);
+      deduction += settlement.lineDeduction(qtyRejected, orderItem.unit_price);
     }
 
     // order total after the rejected items come off, floored at 0
-    const newTotal = Math.max(0, Number(order.total_amount) - deduction);
+    const newTotal = settlement.netAfterRejections(order.total_amount, deduction);
 
     // rejected anything? then it's a partial delivery, otherwise a full one
     const finalStatus = appliedRejections.length > 0 ? 'partially_delivered' : 'delivered';
@@ -511,10 +513,10 @@ async function deliverOrder(req, res, next) {
     // overpaying doesn't block delivery, we just don't store the excess - debt_amount is a
     // generated column (order_total - paid_amount), so a stored overpayment would go negative
     // and throw off the running balance in v_pharmacy_debts.
-    const totalDue = newTotal + prevDebt;
+    const totalDue = settlement.totalDue(newTotal, prevDebt);
     // if totalDue <= 0 they're already in credit from a past overpayment, so nothing's
     // collectible - force 0 instead of letting Math.min hand back a negative totalDue
-    const cappedPaid = totalDue <= 0 ? 0 : Math.min(paidAmount, totalDue);
+    const cappedPaid = settlement.cappedPaid(paidAmount, totalDue);
 
     // write the order back
     await conn.query(

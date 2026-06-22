@@ -10,32 +10,11 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { sendEmail } = require('../services/email.service');
 const { emitToUser } = require('../services/socket.service');
+// validation rules live in utils/validation.js so they can be unit-tested directly
+const { isValidEmail, isAllowedRole, passwordIssues } = require('../utils/validation');
 
 const BCRYPT_ROUNDS = 12;
 const JWT_EXPIRY = '7d';
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VALID_ROLES = ['company', 'pharmacy', 'driver'];
-
-// returns an error string if the password is too weak, or null if it's fine
-function validatePassword(password) {
-  if (!password || typeof password !== 'string' || password.length < 8) {
-    return 'Password must be at least 8 characters long';
-  }
-  if (!/[A-Z]/.test(password)) {
-    return 'Password must contain at least one uppercase letter';
-  }
-  if (!/[a-z]/.test(password)) {
-    return 'Password must contain at least one lowercase letter';
-  }
-  if (!/[0-9]/.test(password)) {
-    return 'Password must contain at least one number';
-  }
-  if (!/[!@#$%^&*]/.test(password)) {
-    return 'Password must contain at least one special character (!@#$%^&*)';
-  }
-  return null;
-}
 
 // quick sanity check that the email domain can actually receive mail (has MX records),
 // stops a lot of typo'd / fake signups before we bother sending anything
@@ -80,7 +59,7 @@ async function register(req, res, next) {
     console.log('[register] called for email:', email, 'role:', role)
 
     // bail early on anything obviously bad before we hit the DB
-    if (!email || !EMAIL_REGEX.test(email)) {
+    if (!email || !isValidEmail(email)) {
       return res
         .status(400)
         .json({ success: false, message: 'Invalid email format' });
@@ -92,12 +71,12 @@ async function register(req, res, next) {
         .json({ success: false, message: 'This email domain does not exist' });
     }
 
-    const pwError = validatePassword(password);
+    const pwError = passwordIssues(password);
     if (pwError) {
       return res.status(400).json({ success: false, message: pwError });
     }
 
-    if (!role || !VALID_ROLES.includes(role)) {
+    if (!role || !isAllowedRole(role)) {
       return res.status(400).json({
         success: false,
         message: 'Role must be one of: company, pharmacy, driver',
