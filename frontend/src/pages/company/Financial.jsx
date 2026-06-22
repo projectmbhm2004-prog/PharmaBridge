@@ -6,13 +6,20 @@ import {
   X,
   FileX,
   BadgeDollarSign,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import api from "@/lib/api";
-import { formatCurrency, formatDate, toISODate } from "@/lib/utils";
+import {
+  formatCurrency,
+  formatDate,
+  getStatusLabel,
+  toISODate,
+} from "@/lib/utils";
 import DashboardLayout from "@/components/shared/DashboardLayout";
 import StatusBadge from "@/components/shared/StatusBadge";
+import PrintReport from "@/components/shared/PrintReport";
 import DateRangePicker from "@/components/ui/date-range-picker";
 
 const COLS = 7;
@@ -131,8 +138,35 @@ export default function Financial() {
   const inputClass =
     "rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
 
+  // human-readable description of the active filters, for the printed report
+  const printFilters = [];
+  if (selectedPharmacy) {
+    printFilters.push({ label: "Pharmacy", value: selectedPharmacy.name });
+  }
+  if (filters.from || filters.to) {
+    printFilters.push({ label: "Date Range", value: formatRange(filters.from, filters.to) });
+  }
+  if (filters.payment_status) {
+    printFilters.push({
+      label: "Payment Status",
+      value: PAYMENT_STATUSES.find((s) => s.value === filters.payment_status)?.label,
+    });
+  }
+
   return (
     <DashboardLayout role="company" title="Financial Records">
+      <div className="financial-print-area">
+      {/* Screen toolbar */}
+      <div className="no-print mb-5 flex items-center justify-end">
+        <button
+          onClick={() => window.print()}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-text-primary shadow-sm transition-colors duration-150 hover:bg-slate-50 active:scale-[0.98]"
+        >
+          <Printer size={16} /> Print Report
+        </button>
+      </div>
+
+      <div className="no-print">
       {/* Summary cards */}
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <SummaryCard
@@ -378,7 +412,83 @@ export default function Financial() {
           }}
         />
       )}
+      </div>
+
+      {/* Print-only report */}
+      <PrintReport title="Financial Report" filters={printFilters}>
+        <div className="print-summary">
+          <PrintCard label="Total Billed" value={totals.billed} />
+          <PrintCard label="Total Paid" value={totals.paid} />
+          <PrintCard label="Total Debt" value={totals.debt} />
+        </div>
+
+        {selectedPharmacy && filteredTotals && (
+          <>
+            <div className="print-summary-label">
+              Filtered: {selectedPharmacy.name}
+            </div>
+            <div className="print-summary">
+              <PrintCard label="Billed" value={filteredTotals.billed} />
+              <PrintCard label="Paid" value={filteredTotals.paid} />
+              <PrintCard label="Debt" value={filteredTotals.debt} />
+            </div>
+          </>
+        )}
+
+        <table className="print-table">
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Pharmacy</th>
+              <th>Date</th>
+              <th className="print-num">Order Total</th>
+              <th className="print-num">Paid</th>
+              <th className="print-num">Debt</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((r) => (
+              <tr key={r.id}>
+                <td>
+                  #{r.order_id}
+                  {(Number(r.debt_amount) || 0) < 0 ? " (Credit)" : ""}
+                </td>
+                <td>{r.pharmacy_name}</td>
+                <td>{formatDate(r.order_date)}</td>
+                <td className="print-num">{formatCurrency(r.order_total)}</td>
+                <td className="print-num">{formatCurrency(r.paid_amount)}</td>
+                <td className="print-num">{formatCurrency(r.debt_amount)}</td>
+                <td>
+                  <span className="print-status">
+                    {getStatusLabel(r.order_status)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </PrintReport>
+      </div>
     </DashboardLayout>
+  );
+}
+
+// describe a from/to date range in plain English for the printed filter summary
+function formatRange(from, to) {
+  if (from && to) return `${formatDate(from)} – ${formatDate(to)}`;
+  if (from) return `From ${formatDate(from)}`;
+  if (to) return `Until ${formatDate(to)}`;
+  return "";
+}
+
+// flat, borderless summary card used inside the printed report
+function PrintCard({ label, value }) {
+  return (
+    <div className="print-card">
+      <span className="print-card-label">{label}</span>
+      <span className="print-card-value">{formatCurrency(value)}</span>
+    </div>
   );
 }
 

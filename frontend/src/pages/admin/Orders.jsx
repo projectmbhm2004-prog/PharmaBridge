@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Inbox, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  Inbox,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Printer,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import api from "@/lib/api";
@@ -7,6 +14,7 @@ import { formatDate, formatCurrency, getStatusLabel, toISODate } from "@/lib/uti
 import DashboardLayout from "@/components/shared/DashboardLayout";
 import StatusBadge from "@/components/shared/StatusBadge";
 import SkeletonRow from "@/components/shared/SkeletonRow";
+import PrintReport from "@/components/shared/PrintReport";
 import DateRangePicker from "@/components/ui/date-range-picker";
 
 const STATUSES = [
@@ -124,8 +132,42 @@ export default function Orders() {
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/25";
 
+  // every filter is listed in the printed report, with an explicit "All" default
+  const dateRange =
+    filters.from || filters.to
+      ? [filters.from && `From ${filters.from}`, filters.to && `to ${filters.to}`]
+          .filter(Boolean)
+          .join(" ")
+      : "All dates";
+  const printFilters = [
+    { label: "Status", value: filters.status ? getStatusLabel(filters.status) : "All" },
+    { label: "Date Range", value: dateRange },
+    { label: "Pharmacy", value: filters.pharmacy.trim() || "All" },
+    { label: "Company", value: filters.company.trim() || "All" },
+    { label: "Product", value: filters.product.trim() || "All" },
+    { label: "Order ID", value: filters.search.trim() || "All" },
+  ];
+
+  // summary line is computed from the rows currently loaded (the visible page)
+  const visibleAmount = orders.reduce(
+    (sum, o) => sum + (Number(o.total_amount) || 0),
+    0
+  );
+
   return (
     <DashboardLayout role="admin" title="All Orders">
+      <div className="financial-print-area">
+      {/* Screen toolbar */}
+      <div className="no-print mb-5 flex items-center justify-end">
+        <button
+          onClick={() => window.print()}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-text-primary shadow-sm transition-colors duration-150 hover:bg-slate-50 active:scale-[0.98]"
+        >
+          <Printer size={16} /> Print Report
+        </button>
+      </div>
+
+      <div className="no-print">
       {/* Filters bar */}
       <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
         <div className="flex w-full flex-col gap-1 sm:w-auto">
@@ -337,6 +379,46 @@ export default function Orders() {
           </div>
         </div>
       )}
+      </div>
+
+      {/* Print-only report */}
+      <PrintReport title="Orders Report" filters={printFilters}>
+        <div className="print-summary-line">
+          Showing <b>{orders.length}</b> order{orders.length === 1 ? "" : "s"}
+          {totalPages > 1 ? ` (page ${page} of ${totalPages})` : ""} &nbsp;|&nbsp;
+          Total Amount: <b>{formatCurrency(visibleAmount)}</b>
+        </div>
+
+        <table className="print-table">
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Pharmacy</th>
+              <th>Company</th>
+              <th>Driver</th>
+              <th className="print-num">Amount</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o) => (
+              <tr key={o.id}>
+                <td>#{o.id}</td>
+                <td>{o.pharmacy_name}</td>
+                <td>{o.company_name}</td>
+                <td>{o.driver_name || "—"}</td>
+                <td className="print-num">{formatCurrency(o.total_amount)}</td>
+                <td>
+                  <span className="print-status">{getStatusLabel(o.status)}</span>
+                </td>
+                <td>{formatDate(o.created_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </PrintReport>
+      </div>
     </DashboardLayout>
   );
 }
