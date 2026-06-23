@@ -496,6 +496,22 @@ function StepReturns({
   removeRow,
   onContinue,
 }) {
+  // a row is invalid once a product is picked and the qty is out of [1, quantity_ordered]
+  const hasInvalid =
+    !noReturns &&
+    rows.some((row) => {
+      const selected = items.find(
+        (it) => Number(it.id) === Number(row.order_item_id)
+      );
+      if (!selected) return false;
+      const qty = Number(row.quantity_rejected);
+      return (
+        Number.isNaN(qty) ||
+        qty < 1 ||
+        qty > Number(selected.quantity_ordered)
+      );
+    });
+
   return (
     <div>
       <StepHeader
@@ -521,6 +537,9 @@ function StepReturns({
               (it) => Number(it.id) === Number(row.order_item_id)
             );
             const max = selected ? Number(selected.quantity_ordered) : undefined;
+            const qty = Number(row.quantity_rejected);
+            const exceedsOrdered =
+              selected && !Number.isNaN(qty) && qty > max;
             return (
               <div
                 key={i}
@@ -565,7 +584,11 @@ function StepReturns({
                         updateRow(i, { quantity_rejected: e.target.value })
                       }
                       placeholder="Qty"
-                      className="w-24 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                      className={`w-24 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 ${
+                        exceedsOrdered
+                          ? "border-red-400 focus:ring-red-500"
+                          : "border-border focus:ring-green-500"
+                      }`}
                     />
                     <input
                       type="text"
@@ -577,6 +600,11 @@ function StepReturns({
                       className="min-w-0 flex-1 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500"
                     />
                   </div>
+                  {exceedsOrdered && (
+                    <p className="text-xs font-medium text-red-600">
+                      Cannot exceed ordered quantity (max: {max})
+                    </p>
+                  )}
                 </div>
               </div>
             );
@@ -593,7 +621,8 @@ function StepReturns({
 
       <button
         onClick={onContinue}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3.5 text-base font-semibold text-white transition duration-150 hover:bg-green-700 active:scale-[0.98]"
+        disabled={hasInvalid}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3.5 text-base font-semibold text-white transition duration-150 hover:bg-green-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
       >
         Continue
       </button>
